@@ -1,0 +1,130 @@
+#pragma once
+
+template<typename T, unsigned N, bool B>
+BlockAllocator<T, N, B>::~BlockAllocator() {
+    this->clear();
+}
+
+template<typename T, unsigned N, bool B>
+template<class... Args>
+Ticket<T> BlockAllocator<T, N, B>::allocate(size_t n, Args&&... args) {
+    std::unique_lock lock(mut);
+
+    if (!blocks.size() || !blocks.back().ptr || blocks.back().position + n > N) {
+        this->add_block();
+    }
+
+    auto& current = blocks.back();
+    Ticket<T> result = reinterpret_cast<T*>(current.ptr) + current.position;
+    result.index = blocks.size() - 1;
+    current.position += n;
+
+    lock.unlock();
+
+    for (size_t i = 0; i < n; ++i) {
+        new (&result[i]) T(args...);
+    }
+
+    return result;
+}
+
+template<typename T, unsigned N, bool Destroy>
+void BlockAllocator<T, N, Destroy>::deallocate(const Ticket<T>& ticket, size_t n) {
+    if (!ticket.ptr) return;
+
+    if constexpr (Destroy) for (size_t i = 0; i < n; ++i) {
+        ticket.ptr[i].~T();
+    }
+
+    std::unique_lock lock(mut);
+
+    auto& block = blocks[ticket.index];
+    block.freed += n;
+    if (block.freed == N || (&block != &blocks.back() && block.freed == block.position)) {
+        block.free();
+    }
+}
+
+template<typename T, unsigned N, bool B>
+void BlockAllocator<T, N, B>::add_block() {
+    blocks.push_back(Block { new char[N * sizeof(T)], 0, 0 });
+}
+
+template<typename T, unsigned N, bool B>
+void BlockAllocator<T, N, B>::clear() {
+    for (auto& block : blocks) {
+        block.free();
+    }
+    blocks.clear();
+}
+
+template<typename T, unsigned N, bool B>
+size_t BlockAllocator<T, N, B>::in_use() const {
+    size_t r = 0;
+    for (auto& block : blocks) {
+        if (block.ptr) {
+            r += block.position - block.freed;
+        }
+    }
+    return r * sizeof(T);
+}
+
+template<typename T, unsigned N, bool B>
+size_t BlockAllocator<T, N, B>::allocated() const {
+    size_t n = 0;
+    for (auto& block : blocks) {
+        if (block.ptr) {
+            ++n;
+        }
+    }
+    return n * N * sizeof(T);
+}
+
+template<typename T, unsigned N, bool B>
+void BlockAllocator<T, N, B>::Block::free() {
+    delete[] ptr;
+    ptr = nullptr;
+}
+
+template<typename T, unsigned N, bool B>
+GarbageCollector<T, N, B>::GarbageCollector(BlockAllocator<T, N, B>* allocator) {
+    this->allocator = allocator;
+
+    this->running = true;
+    this->worker_thread = std::thread(&GarbageCollector<T, N, B>::worker, this);
+}
+
+template<typename T, unsigned N, bool B>
+GarbageCollector<T, N, B>::~GarbageCollector() {
+    std::unique_lock lock(mut);
+    this->running = false;
+    this->cv.notify_all();
+    lock.unlock();
+    this->worker_thread.join();
+}
+
+template<typename T, unsigned N, bool B>
+void GarbageCollector<T, N, B>::enqueue(Ticket<T> ticket, size_t n) {
+    std::unique_lock lock(mut);
+    this->queue.emplace_back(ticket, n);
+    this->cv.notify_all();
+}
+
+template<typename T, unsigned N, bool B>
+void GarbageCollector<T, N, B>::worker() {
+    while (running) {
+        std::unique_lock lock(mut);
+        this->cv.wait(lock, [this]() {
+            return queue.size() || !running;
+        });
+
+        std::vector<Deallocation> queue;
+        std::swap(this->queue, queue);
+
+        lock.unlock();
+
+        for (auto& dealloc : queue) {
+            allocator->deallocate(dealloc.ticket, dealloc.n);
+        }
+    }
+}
