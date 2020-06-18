@@ -51,8 +51,6 @@ public:
 
 private:
     struct Block {
-        void free();
-
         char* ptr;
         int position;
         int freed;
@@ -66,7 +64,7 @@ private:
 template<typename T, unsigned N, bool Destroy>
 class GarbageCollector {
 public:
-    GarbageCollector(BlockAllocator<T, N, Destroy>* allocator);
+    GarbageCollector(BlockAllocator<T, N, Destroy>* allocator, long threshold = 1, int thread_count = 1);
 
     GarbageCollector(const GarbageCollector<T, N, Destroy>&) = delete;
     GarbageCollector& operator=(const GarbageCollector<T, N, Destroy>&) = delete;
@@ -87,8 +85,9 @@ private:
     BlockAllocator<T, N, Destroy>* allocator;
 
     std::vector<Deallocation> queue;
+    long threshold;
 
-    std::thread worker_thread;
+    std::vector<std::thread> thread_pool;
     bool running;
 
     std::mutex mut;

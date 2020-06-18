@@ -41,7 +41,11 @@ void BlockAllocator<T, N, Destroy>::deallocate(const Ticket<T>& ticket, size_t n
     auto& block = blocks[ticket.index];
     block.freed += n;
     if (block.freed == N || (&block != &blocks.back() && block.freed == block.position)) {
-        block.free();
+        auto ptr = block.ptr;
+        block.ptr = nullptr;
+
+        lock.unlock();
+        delete[] ptr;
     }
 }
 
@@ -53,7 +57,8 @@ void BlockAllocator<T, N, B>::add_block() {
 template<typename T, unsigned N, bool B>
 void BlockAllocator<T, N, B>::clear() {
     for (auto& block : blocks) {
-        block.free();
+        delete[] block.ptr;
+        block.ptr = nullptr;
     }
     blocks.clear();
 }
@@ -81,33 +86,32 @@ size_t BlockAllocator<T, N, B>::allocated() const {
 }
 
 template<typename T, unsigned N, bool B>
-void BlockAllocator<T, N, B>::Block::free() {
-    delete[] ptr;
-    ptr = nullptr;
-}
-
-template<typename T, unsigned N, bool B>
-GarbageCollector<T, N, B>::GarbageCollector(BlockAllocator<T, N, B>* allocator) {
+GarbageCollector<T, N, B>::GarbageCollector(BlockAllocator<T, N, B>* allocator, long threshold, int thread_count) {
     this->allocator = allocator;
 
+    this->threshold = threshold;
+
     this->running = true;
-    this->worker_thread = std::thread(&GarbageCollector<T, N, B>::worker, this);
+    for (int i = 0; i < thread_count; ++i) {
+        this->thread_pool.emplace_back(&GarbageCollector<T, N, B>::worker, this);
+    }
 }
 
 template<typename T, unsigned N, bool B>
 GarbageCollector<T, N, B>::~GarbageCollector() {
-    std::unique_lock lock(mut);
     this->running = false;
     this->cv.notify_all();
-    lock.unlock();
-    this->worker_thread.join();
+
+    for (auto& thread : thread_pool) {
+        thread.join();
+    }
 }
 
 template<typename T, unsigned N, bool B>
 void GarbageCollector<T, N, B>::enqueue(Ticket<T> ticket, size_t n) {
     std::unique_lock lock(mut);
     this->queue.emplace_back(ticket, n);
-    this->cv.notify_all();
+    this->cv.notify_one();
 }
 
 template<typename T, unsigned N, bool B>
@@ -115,7 +119,7 @@ void GarbageCollector<T, N, B>::worker() {
     while (running) {
         std::unique_lock lock(mut);
         this->cv.wait(lock, [this]() {
-            return queue.size() || !running;
+            return queue.size() >= threshold || !running;
         });
 
         std::vector<Deallocation> queue;

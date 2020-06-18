@@ -1,5 +1,7 @@
 #include "tree.h"
 
+GarbageCollector<Tree, 256, true> Tree::tree_gc(&Tree::tree_allocator, 16, 2);
+
 Tree::Tree(const Board& board, Colour colour, int pass)
     : board(board), colour(colour), pass(pass) {}
 
