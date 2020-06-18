@@ -116,6 +116,7 @@ int individual_score(const Board& board, Colour colour) {
     return popcount(colour == Colour::Black ? board.black : board.white);
 }
 
-int net_score(const Board& board) {
-    return popcount(board.black) - popcount(board.white);
+int net_score(const Board& board, Colour colour) {
+    int score = popcount(board.black) - popcount(board.white);
+    return colour == Colour::Black ? score : -score;
 }

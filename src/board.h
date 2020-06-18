@@ -30,4 +30,4 @@ bool game_over(const Board& board);
 bool play_move(Board* board, const Move& move, Colour colour);
 
 int individual_score(const Board& board, Colour colour);
-int net_score(const Board& board);
+int net_score(const Board& board, Colour colour = Colour::Black);
