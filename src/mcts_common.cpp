@@ -28,8 +28,10 @@ Tree* select_move_visit_count(Tree* tree) {
 void init_next(Tree* tree, const float* inf) {
     for (int i = 0; i < tree->next_count; ++i) {
         auto& next = tree->next[i];
-        int j = next.move.row * 8 + next.move.col;
-        next.tree->p = inf[j];
+        if (next.move.row >= 0) {
+            int j = next.move.row * 8 + next.move.col;
+            next.tree->p = inf[j];
+        }
     }
 }
 
