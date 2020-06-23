@@ -8,6 +8,9 @@
 #include "mcts.h"
 #include "self_play_data.h"
 
+extern const int TREE_GC_THRESHOLD = 16;
+extern const int TREE_GC_THREADS   = 2;
+
 struct GameStats {
     int black = 0;
     int white = 0;
