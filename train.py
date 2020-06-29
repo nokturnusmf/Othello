@@ -105,6 +105,24 @@ def make_network():
     ])
 
 
+def load_network(path):
+    model = tf.keras.models.Sequential()
+
+    with open(path, 'rb') as file:
+        n, = struct.unpack('i', file.read(4))
+
+        for _ in range(n):
+            h, w = struct.unpack('ll', file.read(16))
+
+            model.add(tf.keras.layers.Dense(h, activation='sigmoid', input_shape=(w,)))
+
+            model.weights[-2].assign(numpy.fromfile(file, dtype=numpy.float32, count=h*w).reshape((h, w)).transpose())
+            file.read(16)
+            model.weights[-1].assign(numpy.fromfile(file, dtype=numpy.float32, count=h))
+
+    return model
+
+
 def save_network(path, model):
     weights = [w.numpy().transpose() for w in model.weights]
 
@@ -125,7 +143,7 @@ def policy_loss(target, output):
     target_ = tf.where(legal, target, 0.)
     output_ = tf.where(legal, output, -1e9)
 
-    return tf.nn.softmax_cross_entropy_with_logits(tf.stop_gradient(target_), output_)
+    return tf.nn.softmax_cross_entropy_with_logits(target_, output_)
 
 
 def value_loss(target, output):
@@ -136,10 +154,10 @@ def policy_value_loss(target, output):
     return policy_loss(target[:,:64], output[:,:64]) + value_loss(target[:,64], output[:,64])
 
 
-def main(save_path, files):
+def main(model_path, save_path, files):
     games = sum([load_data(path) for path in files], [])
 
-    model = make_network()
+    model = load_network(model_path)
     opt = tf.keras.optimizers.Adam()
     model.compile(optimizer=opt, loss=policy_value_loss)
 
@@ -151,4 +169,4 @@ def main(save_path, files):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1], sys.argv[2:])
+    main(sys.argv[1], sys.argv[2], sys.argv[3:])
