@@ -190,7 +190,7 @@ void print_pv(const Tree* tree, bool absolute) {
     std::vector<Move> pv;
     build_pv(&pv, tree, tree->n / 1000);
 
-    auto eval = tree->w / tree->n;
+    auto eval = tree->q();
     if (absolute && tree->colour == Colour::White) {
         eval = -eval;
     }
@@ -212,7 +212,7 @@ void print_moves(const Tree* tree) {
 
         float p = sub->p;
         float v = sub->n / n;
-        float q = sub->n ? -sub->w / sub->n : 0;
+        float q = -sub->q();
 
         std::cout << move << " | " << std::setw(7) << p << " | " << std::setw(7) << v << " | " << std::setw(8) << q << '\n';
     }
