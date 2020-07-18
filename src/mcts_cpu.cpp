@@ -12,7 +12,7 @@ void expand_node(std::vector<Tree*> path, const NeuralNet& net) {
 
     auto result = net(std::move(input));
 
-    init_next(tree, result.data.get());
+    if (tree->next_cap != 1) init_next(tree, result.data.get());
     backprop(path, result.data[64] * 2 - 1);
 }
 

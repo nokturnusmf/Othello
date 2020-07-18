@@ -1,8 +1,10 @@
 #include "mcts.h"
 
+#include <array>
 #include <algorithm>
 #include <random>
 #include <chrono>
+#include <cmath>
 
 static thread_local std::default_random_engine gen(std::chrono::steady_clock::now().time_since_epoch().count());
 
@@ -26,12 +28,26 @@ Tree* select_move_visit_count(Tree* tree) {
 }
 
 void init_next(Tree* tree, const float* inf) {
+    std::array<float, 60> buffer;
+
+    float max_p = std::numeric_limits<float>::lowest();
     for (int i = 0; i < tree->next_count; ++i) {
-        auto& next = tree->next[i];
-        if (next.move.row >= 0) {
-            int j = next.move.row * 8 + next.move.col;
-            next.tree->p = inf[j];
-        }
+        auto move = tree->next[i].move;
+        float p = inf[move.row * 8 + move.col];
+
+        buffer[i] = p;
+        max_p = std::max(max_p, p);
+    }
+
+    float total = 0.f;
+    for (int i = 0; i < tree->next_count; ++i) {
+        buffer[i] = std::exp(buffer[i] - max_p);
+        total += buffer[i];
+    }
+
+    float scale = 1.f / total;
+    for (int i = 0; i < tree->next_count; ++i) {
+        tree->next[i].tree->p = buffer[i] * scale;
     }
 }
 
@@ -68,7 +84,7 @@ float action_value(const Tree* next, int parent_visit) {
     static const float c_init = 1.25f;
 
     auto c = std::log((1 + parent_visit + c_base) / c_base) + c_init;
-    auto u = c * next->p * std::sqrt(parent_visit) / (1.f + next->n + next->n_inflight);
+    auto u = c * next->p * std::sqrt(static_cast<float>(parent_visit)) / (1.f + next->n + next->n_inflight);
 
     return u - next->q();
 }

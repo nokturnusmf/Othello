@@ -32,7 +32,7 @@ struct Batch {
 
         for (int i = 0; i < entries.size(); ++i) {
             ensure_next(entries[i].back());
-            init_next(entries[i].back(), &result[65 * i]);
+            if (entries[i].back()->next_cap != 1) init_next(entries[i].back(), &result[65 * i]);
             backprop(entries[i], result[65 * i + 64] * 2 - 1);
         }
 
