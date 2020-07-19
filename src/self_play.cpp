@@ -8,8 +8,8 @@
 #include "mcts.h"
 #include "self_play_data.h"
 
-extern const int TREE_GC_THRESHOLD = 16;
-extern const int TREE_GC_THREADS   = 2;
+extern const int TREE_GC_THRESHOLD = 0;
+extern const int TREE_GC_THREADS   = 0;
 
 struct GameStats {
     int black = 0;
@@ -108,7 +108,7 @@ void SelfPlay::worker() {
                 continue;
             }
 
-            mcts(tree, net, 800);
+            mcts(tree, net, 1600);
             game.emplace_back(tree);
             tree = played(tree->board) < 32 ? select_move_proportional(tree) : select_move_visit_count(tree);
         }
@@ -120,7 +120,7 @@ void SelfPlay::worker() {
         std::cout << "\rGenerating games: " << buffer.pos << std::flush;
         lock.unlock();
 
-        Tree::tree_gc.enqueue(root);
+        Tree::tree_allocator.deallocate(root);
     }
 }
 
