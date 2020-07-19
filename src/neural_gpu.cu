@@ -3,7 +3,7 @@
 #include <cmath>
 
 static __device__ float sigmoid(float f) {
-    return 1 / (1 + std::exp(-f));
+    return 1 / (1 + std::exp(min(-f, 88.f)));
 }
 
 __global__ void eval_layer_kernel(float* output, const float* input, const float* weights, const float* biases, int input_length) {

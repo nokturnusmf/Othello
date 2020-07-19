@@ -41,7 +41,7 @@ Matrix Matrix::operator*(const Matrix& other) const {
 }
 
 static float sigmoid(float x) {
-    return 1 / (1 + std::exp(-x));
+    return 1 / (1 + std::exp(std::min(-x, 88.f)));
 }
 
 Vector NeuralNet::operator()(Vector input) const {
