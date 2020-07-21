@@ -60,15 +60,17 @@ void backprop(std::vector<Tree*>& path, float value) {
     }
 }
 
-void mcts(Tree* tree, const NeuralNet& net, int iterations) {
+void mcts(Tree* tree, const NeuralNet& net, int iterations, bool noise) {
     Batch batch(net, 256);
 
-    tree->n_inflight = 1;
-    tree->w += VIRTUAL_LOSS;
-    batch.add_input(std::vector<Tree*>(1, tree));
-    batch.go();
+    if (!tree->n) {
+        tree->n_inflight = 1;
+        tree->w += VIRTUAL_LOSS;
+        batch.add_input(std::vector<Tree*>(1, tree));
+        batch.go();
+    }
 
-    add_exploration_noise(tree);
+    if (noise) add_exploration_noise(tree);
 
     int collisions = 0, max_collisions = 4;
     int cur_iterations = iterations, max_iterations = iterations * 3;

@@ -228,7 +228,7 @@ int main(int argc, char** argv) {
     std::cout << args->pos.board << '\n' << (args->pos.colour == Colour::Black ? "Black" : "White") << " to play\n";
 
     auto tree = Tree::make_tree(args->pos.board, args->pos.colour);
-    mcts(tree.get(), args->net, args->iterations);
+    mcts(tree.get(), args->net, args->iterations, false);
 
     print_pv(tree.get(), args->absolute);
     print_moves(tree.get());

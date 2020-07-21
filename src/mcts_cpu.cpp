@@ -25,9 +25,9 @@ void backprop(std::vector<Tree*>& path, float value) {
     }
 }
 
-void mcts(Tree* tree, const NeuralNet& net, int iterations) {
-    expand_node(std::vector(1, tree), net);
-    add_exploration_noise(tree);
+void mcts(Tree* tree, const NeuralNet& net, int iterations, bool noise) {
+    if (!tree->n) expand_node(std::vector(1, tree), net);
+    if (noise) add_exploration_noise(tree);
 
     for (int i = 0; i < iterations; ++i) {
         auto sim = tree;
