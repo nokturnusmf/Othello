@@ -4,8 +4,8 @@
 #include <thread>
 #include <mutex>
 
-#include "neural_cpu.h"
 #include "mcts.h"
+#include "neural.h"
 #include "self_play_data.h"
 
 extern const int TREE_GC_THRESHOLD = 0;
@@ -44,7 +44,7 @@ struct GameBuffer {
 
 class SelfPlay {
 public:
-    SelfPlay(const NeuralNet& net, long games, int thread_count) : net(net), buffer(games) {
+    SelfPlay(NeuralNet& net, long games, int thread_count) : net(net), buffer(games) {
         this->remaining = games;
         this->running = true;
         for (int i = 0; i < thread_count; ++i) {
@@ -79,7 +79,7 @@ public:
 private:
     void worker();
 
-    const NeuralNet& net;
+    NeuralNet& net;
     GameBuffer buffer;
 
     long remaining;
@@ -141,9 +141,9 @@ int main(int argc, char** argv) {
         std::cerr << "Error loading net\n";
         return 1;
     }
-    auto net = load_net(net_file);
+    auto net = load_net(net_file, 256);
 
-    SelfPlay sp(net, games, std::thread::hardware_concurrency());
+    SelfPlay sp(*net, games, 1);
     sp.wait();
 
     auto stats = sp.stats();

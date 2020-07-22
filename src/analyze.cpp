@@ -12,7 +12,7 @@
 #include "mcts.h"
 #include "tree.h"
 #include "board.h"
-#include "neural_cpu.h"
+#include "neural.h"
 
 extern const int TREE_GC_THRESHOLD = 1;
 extern const int TREE_GC_THREADS   = 1;
@@ -23,7 +23,7 @@ struct Position {
 };
 
 struct Arguments {
-    NeuralNet net;
+    std::unique_ptr<NeuralNet> net;
     Position pos;
     int iterations = 1000000;
     bool absolute = false;
@@ -137,7 +137,7 @@ std::optional<Arguments> parse_args(int argc, char** argv) {
             return std::nullopt;
         }
 
-        args.net = load_net(file);
+        args.net = load_net(file, 256);
         return args;
     } else {
         std::cerr << "Usage: " << argv[0] << " [options] <net>\n";
@@ -228,7 +228,7 @@ int main(int argc, char** argv) {
     std::cout << args->pos.board << '\n' << (args->pos.colour == Colour::Black ? "Black" : "White") << " to play\n";
 
     auto tree = Tree::make_tree(args->pos.board, args->pos.colour);
-    mcts(tree.get(), args->net, args->iterations, false);
+    mcts(tree.get(), *args->net, args->iterations, false);
 
     print_pv(tree.get(), args->absolute);
     print_moves(tree.get());

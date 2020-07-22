@@ -6,7 +6,7 @@
 
 struct NeuralNet;
 
-void mcts(Tree* tree, const NeuralNet& net, int iterations, bool noise = true);
+void mcts(Tree* tree, NeuralNet& net, int iterations, bool noise = true);
 
 Tree* select_move_proportional(Tree* tree);
 Tree* select_move_visit_count(Tree* tree);

@@ -21,28 +21,20 @@ class Position:
     def make_input(self):
         b1 = []
         b2 = []
-        for i in range(64):
-            b = 1 << i
-            b1.append(1. if self.ours   & b else 0.)
-            b2.append(1. if self.theirs & b else 0.)
-        return b1 + b2
-
-    # def make_input(self):
-    #     b1 = []
-    #     b2 = []
-    #     for i in range(8):
-    #         b1_ = []
-    #         b2_ = []
-    #         for j in range(8):
-    #             b = 1 << (i * 8 + j)
-    #             b1_.append(1. if self.ours   & b else 0.)
-    #             b2_.append(1. if self.theirs & b else 0.)
-    #         b1.append(b1_)
-    #         b2.append(b2_)
-    #     return [b1, b2]
+        for i in range(8):
+            b1_ = []
+            b2_ = []
+            for j in range(8):
+                b = 1 << (i * 8 + j)
+                b1_.append(1. if self.ours   & b else 0.)
+                b2_.append(1. if self.theirs & b else 0.)
+            b1.append(b1_)
+            b2.append(b2_)
+        return [b1, b2]
 
     def make_output(self):
-        out = 64 * [-1.]
+        out = 64 * [0.]
+        # out = 64 * [-1.]
         for m in self.moves:
             out[m.row * 8 + m.col] = m.p
         return out
@@ -50,14 +42,19 @@ class Position:
 
 class Game:
     def __init__(self, score):
-        self.result = (math.copysign(1, score) + 1) * 0.5
+        self.result = float((score > 0) - (score < 0))
         self.positions = []
 
     def make_input(self, index):
         return self.positions[index].make_input()
 
     def make_output(self, index):
-        return self.positions[index].make_output() + [self.result if self.positions[index].col == 0 else 1 - self.result]
+        pos = self.positions[index]
+        return pos.make_output(), self.result if pos.col == 0 else -self.result
+
+
+def split_tuples(x):
+    return [list(y) for y in zip(*x)]
 
 
 def sample_batch(games, batch_size):
@@ -65,7 +62,7 @@ def sample_batch(games, batch_size):
         i = numpy.random.randint(len(game.positions))
         return game.make_input(i), game.make_output(i)
 
-    return zip(*[random_pos(game) for game in numpy.random.choice(games, size=batch_size)])
+    return split_tuples(random_pos(game) for game in numpy.random.choice(games, size=batch_size))
 
 
 def load_data(path):
@@ -96,74 +93,153 @@ def load_data(path):
     return result
 
 
-def make_network():
-    return tf.keras.models.Sequential([
-        tf.keras.layers.Dense(96, activation='sigmoid'),
-        tf.keras.layers.Dense(96, activation='sigmoid'),
-        tf.keras.layers.Dense(96, activation='sigmoid'),
-        tf.keras.layers.Dense(65, activation='sigmoid')
-    ])
+# class ResBlock(tf.keras.layers.Layer):
+#     def __init__(self, filters, size):
+#         super(ResBlock, self).__init__()
+#
+#         self.conv1 = tf.keras.layers.Conv2D(filters, size, padding='same')
+#         self.conv2 = tf.keras.layers.Conv2D(filters, size, padding='same')
+#         self.bn = tf.keras.layers.BatchNormalization()
+#         self.relu = tf.keras.layers.ReLU(negative_slope=0.01)
+#
+#     def build(self, input_shape):
+#         self.conv1.build(input_shape)
+#         self.conv2.build(self.conv1.output_shape)
+#
+#     def call(self, input):
+#         res = self.conv1(input)
+#         res = self.bn(res)
+#         res = self.relu(res)
+#
+#         res = self.conv2(res)
+#         res = self.bn(res)
+#
+#         res = input + res
+#         res = self.relu(res)
+#
+#         return res
+
+
+class Model(tf.keras.models.Model):
+    def __init__(self, blocks, filters, size):
+        super(Model, self).__init__()
+
+        self.conv1 = tf.keras.layers.Conv2D(filters, size, data_format="channels_first", padding='same')
+
+        self.tower = [tf.keras.layers.Conv2D(filters, size, data_format="channels_first", padding='same') for _ in range(blocks)]
+
+        self.bn = tf.keras.layers.BatchNormalization()
+        self.flatten = tf.keras.layers.Flatten()
+
+        self.policy_conv = tf.keras.layers.Conv2D(2, 1, data_format="channels_first")
+        self.policy_bn = tf.keras.layers.BatchNormalization()
+        self.policy_fc = tf.keras.layers.Dense(64)
+
+        self.value_conv = tf.keras.layers.Conv2D(1, 1, data_format="channels_first")
+        self.value_bn = tf.keras.layers.BatchNormalization()
+        self.value_fc1 = tf.keras.layers.Dense(256)
+        self.value_fc2 = tf.keras.layers.Dense(1)
+
+
+    def call(self, x):
+        x = self.conv1(x)
+        # x = self.bn(x)
+        x = tf.nn.relu(x)
+
+        for conv in self.tower:
+            x = conv(x)
+            # x = self.bn(x)
+            x = tf.nn.relu(x)
+
+
+        p = self.policy_conv(x)
+        # p = self.policy_bn(p)
+        p = tf.nn.relu(p)
+        p = self.flatten(p)
+        p = self.policy_fc(p)
+
+        v = self.value_conv(x)
+        # v = self.value_bn(v)
+        v = tf.nn.relu(v)
+        v = self.flatten(v)
+        v = self.value_fc1(v)
+        v = tf.nn.relu(v)
+        v = self.value_fc2(v)
+        v = tf.math.tanh(v)
+
+        return p, v
 
 
 def load_network(path):
-    model = tf.keras.models.Sequential()
-
-    with open(path, 'rb') as file:
-        n, = struct.unpack('i', file.read(4))
-
-        for _ in range(n):
-            h, w = struct.unpack('ll', file.read(16))
-
-            model.add(tf.keras.layers.Dense(h, activation='sigmoid', input_shape=(w,)))
-
-            model.weights[-2].assign(numpy.fromfile(file, dtype=numpy.float32, count=h*w).reshape((h, w)).transpose())
-            file.read(16)
-            model.weights[-1].assign(numpy.fromfile(file, dtype=numpy.float32, count=h))
-
-    return model
+    pass
 
 
 def save_network(path, model):
-    weights = [w.numpy().transpose() for w in model.weights]
+    def save_layer(file, layer):
+        w = layer.kernel.numpy().transpose()
+        b = layer.bias.numpy()
+        shape = w.shape
+
+        if len(shape) == 4:
+            w = numpy.flip(w.transpose((0, 1, 3, 2)).reshape(shape[0], shape[1], shape[2] * shape[3]), 2)
+
+        for d in shape:
+            file.write(struct.pack('i', d))
+
+        file.write(w.tobytes())
+        file.write(b.tobytes())
+
+    version = struct.pack('i', 1)
 
     with open(path, "wb") as file:
-        file.write(struct.pack('i', len(weights) // 2))
-        for weight in weights:
-            shape = weight.shape
-            if len(shape) == 1:
-                file.write(struct.pack('ll', shape[0], 1))
-            else:
-                file.write(struct.pack('ll', shape[0], shape[1]))
-            file.write(weight.tostring())
+        file.write(version)
+
+        filters, = model.conv1.bias.shape
+        file.write(struct.pack('ii', filters, len(model.tower)))
+
+        save_layer(file, model.conv1)
+
+        for conv in model.tower:
+            save_layer(file, conv)
+
+        file.write(struct.pack('ii', 1, 1))
+        save_layer(file, model.policy_conv)
+        save_layer(file, model.policy_fc)
+
+        file.write(struct.pack('ii', 1, 2))
+        save_layer(file, model.value_conv)
+        save_layer(file, model.value_fc1)
+        save_layer(file, model.value_fc2)
 
 
 def policy_loss(target, output):
-    legal = tf.greater_equal(target, 0)
+    return tf.nn.softmax_cross_entropy_with_logits(labels=target, logits=output)
 
-    target_ = tf.where(legal, target, 0.)
-    output_ = tf.where(legal, output, -1e9)
 
-    return tf.nn.softmax_cross_entropy_with_logits(target_, output_)
+# def policy_loss(target, output):
+#     legal = tf.greater_equal(target, 0)
+#
+#     target_ = tf.where(legal, target, 0.)
+#     output_ = tf.where(legal, output, -1e9)
+#
+#     return tf.nn.softmax_cross_entropy_with_logits(labels=target_, logits=output_)
 
 
 def value_loss(target, output):
     return tf.losses.mean_squared_error(target, output)
 
 
-def policy_value_loss(target, output):
-    return policy_loss(target[:,:64], output[:,:64]) + value_loss(target[:,64], output[:,64])
-
-
 def main(model_path, save_path, files):
     games = sum([load_data(path) for path in files], [])
 
-    model = load_network(model_path)
+    model = Model(8, 64, 3)
     opt = tf.keras.optimizers.Adam()
-    model.compile(optimizer=opt, loss=policy_value_loss)
+    model.compile(optimizer=opt, loss=[policy_loss, value_loss])
 
-    for _ in range(1000):
+    for _ in range(len(games) // 800):
         x, y = sample_batch(games, 4096)
-        model.fit(x, y, epochs=4, batch_size=4096)
+        p, v = split_tuples(y)
+        model.fit(numpy.asarray(x), [numpy.asarray(p), numpy.asarray(v)], batch_size=32)
 
     save_network(save_path, model)
 
