@@ -122,7 +122,7 @@ struct Convolution {
     Dimensions dims;
 };
 
-__global__ void eval_layer_kernel(float* output, const float* input, const float* weights, const float* biases, int input_length, bool relu) {
+__global__ void eval_layer_kernel(float* output, const float* input, const float* weights, const float* biases, int input_length, bool relu, bool tanh) {
     int o = blockIdx.x * blockDim.x + threadIdx.x;
     int i = threadIdx.x;
     output[o] = 0;
@@ -134,6 +134,7 @@ __global__ void eval_layer_kernel(float* output, const float* input, const float
     output[o] += biases[i];
 
     if (relu && output[o] < 0) output[o] = 0;
+    else if (tanh) output[o] = tanhf(output[o]);
 }
 
 struct Dense {
@@ -158,8 +159,8 @@ struct Dense {
         cudaFree(bias);
     }
 
-    void operator()(float* input, float* output, int batch_size, bool relu) const {
-        eval_layer_kernel<<<batch_size, dims.h>>>(output, input, weight, bias, dims.w, relu);
+    void operator()(float* input, float* output, int batch_size, bool relu, bool tanh) const {
+        eval_layer_kernel<<<batch_size, dims.h>>>(output, input, weight, bias, dims.w, relu, tanh);
     }
 
     struct Dimensions {
@@ -239,12 +240,12 @@ void CudaNeuralNet::compute(const float* input, int count) {
 
     cudnnCheckError(cudnnSetTensor4dDescriptor(cudnn->output_desc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, count, policy_conv.dims.o, 8, 8));
     policy_conv(tensor_mem_b, tensor_mem_a);
-    policy_fc(tensor_mem_a, policy_output, count, false);
+    policy_fc(tensor_mem_a, policy_output, count, false, false);
 
     cudnnCheckError(cudnnSetTensor4dDescriptor(cudnn->output_desc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, count, value_conv.dims.o, 8, 8));
     value_conv(tensor_mem_b, tensor_mem_a);
-    value_fc1(tensor_mem_a, tensor_mem_b, count, true);
-    value_fc2(tensor_mem_b, value_output, count, false);
+    value_fc1(tensor_mem_a, tensor_mem_b, count, true, false);
+    value_fc2(tensor_mem_b, value_output, count, false, true);
 }
 
 template<typename T>
