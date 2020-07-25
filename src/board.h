@@ -22,6 +22,9 @@ static inline size_t move_bit(size_t r, size_t c) {
 }
 
 Colour other(Colour c);
+Board flip(const Board& board);
+
+int nn_index(const Move& move);
 
 int played(const Board& board);
 bool available(const Board& board, Colour colour);

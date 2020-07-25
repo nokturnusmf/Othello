@@ -54,6 +54,21 @@ Colour other(Colour c) {
     return c == Colour::Black ? Colour::White : Colour::Black;
 }
 
+Board flip(const Board& board) {
+    return Board { board.white, board.black };
+}
+
+int nn_index(const Move& move) {
+    int i = move.row * 8 + move.col;
+    if (i > 36) {
+        return i - 4;
+    } else if (i > 28) {
+        return i - 2;
+    } else {
+        return i;
+    }
+}
+
 int played(const Board& board) {
     return popcount(board.black) + popcount(board.white);
 }
@@ -100,10 +115,10 @@ bool play_move(Board* board, const Move& move, Colour colour) {
 
     if (changes) {
         changes |= rc;
-    }
 
-    board->black |= changes;
-    board->white &= ~changes;
+        board->black |= changes;
+        board->white &= ~changes;
+    }
 
     if (colour == Colour::White) {
         std::swap(board->black, board->white);

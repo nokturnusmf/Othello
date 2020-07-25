@@ -17,7 +17,7 @@ struct Batch {
     Batch(NeuralNet& net)
         : net(net),
           input(std::make_unique<float[]>(128 * net.get_max_batch_size())),
-          policy(std::make_unique<float[]>(64 * net.get_max_batch_size())),
+          policy(std::make_unique<float[]>(60 * net.get_max_batch_size())),
           value(std::make_unique<float[]>(net.get_max_batch_size())) {}
 
     void add_input(std::vector<Tree*>&& path) {
@@ -47,8 +47,8 @@ struct Batch {
         net.retrieve_value(value.get(), count);
 
         for (int i = 0; i < count; ++i) {
-            if (entries[i].back()->next_cap != 1) init_next(entries[i].back(), &policy[64 * i]);
-            backprop(entries[i], tanhf(value[i]));
+            if (entries[i].back()->next_cap != 1) init_next(entries[i].back(), &policy[60 * i]);
+            backprop(entries[i], value[i]);
         }
 
         entries.clear();
@@ -120,8 +120,7 @@ void init_next(Tree* tree, const float* inf) {
 
     float max_p = std::numeric_limits<float>::lowest();
     for (int i = 0; i < tree->next_count; ++i) {
-        auto move = tree->next[i].move;
-        float p = inf[move.row * 8 + move.col];
+        float p = inf[nn_index(tree->next[i].move)];
 
         buffer[i] = p;
         max_p = std::max(max_p, p);

@@ -183,7 +183,7 @@ struct CudaNeuralNet : public NeuralNet {
     void compute(const float* input, int count);
 
     void retrieve_policy(float* dst, int count) const {
-        cudaCheckError(cudaMemcpy(dst, policy_output, 64 * count * sizeof(float), cudaMemcpyDeviceToHost));
+        cudaCheckError(cudaMemcpy(dst, policy_output, 60 * count * sizeof(float), cudaMemcpyDeviceToHost));
     }
 
     void retrieve_value(float* dst, int count) const {
@@ -210,8 +210,8 @@ CudaNeuralNet::CudaNeuralNet(int max_batch_size, int filters) : NeuralNet(max_ba
     cudaCheckError(cudaMalloc(&tensor_mem_a, max_batch_size * filters * 64 * sizeof(float)));
     cudaCheckError(cudaMalloc(&tensor_mem_b, max_batch_size * filters * 64 * sizeof(float)));
 
-    cudaCheckError(cudaMalloc(&policy_output, max_batch_size * 65 * sizeof(float)));
-    value_output = &policy_output[max_batch_size * 64];
+    cudaCheckError(cudaMalloc(&policy_output, max_batch_size * 61 * sizeof(float)));
+    value_output = &policy_output[max_batch_size * 60];
 }
 
 CudaNeuralNet::~CudaNeuralNet() {
