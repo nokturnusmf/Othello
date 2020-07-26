@@ -42,7 +42,7 @@ struct CudnnParams {
     cudnnTensorDescriptor_t output_desc;
     cudnnFilterDescriptor_t filter_desc;
     cudnnConvolutionDescriptor_t conv_desc;
-    cudnnTensorDescriptor_t bias_desc;
+    cudnnTensorDescriptor_t norm_desc;
     cudnnActivationDescriptor_t activation;
 
     void* workspace;
@@ -57,7 +57,7 @@ private:
 
         cudnnCheckError(cudnnCreateFilterDescriptor(&filter_desc));
         cudnnCheckError(cudnnCreateConvolutionDescriptor(&conv_desc));
-        cudnnCheckError(cudnnCreateTensorDescriptor(&bias_desc));
+        cudnnCheckError(cudnnCreateTensorDescriptor(&norm_desc));
         cudnnCheckError(cudnnCreateActivationDescriptor(&activation));
 
         cudaCheckError(cudaMalloc(&workspace, this->workspace_size = workspace_size));
@@ -76,37 +76,31 @@ struct Convolution {
     Convolution(Convolution&& other) {
         this->~Convolution();
 
-        this->kernel = other.kernel;
-        this->bias = other.bias;
-
         this->dims = other.dims;
 
+        this->kernel = other.kernel;
         other.kernel = nullptr;
-        other.bias = nullptr;
     }
 
     ~Convolution() {
         cudaFree(kernel);
-        cudaFree(bias);
     }
 
-    void operator()(float* input, float* output) const {
-        static const float alpha = 1.0f;
-        static const float beta  = 0.0f;
+    void operator()(const float* input, float* output) const {
+        static const float one  = 1.0f;
+        static const float zero = 0.0f;
 
         auto cudnn = CudnnParams::get();
 
         int padding = (dims.h - 1) / 2;
-        auto algorithm = dims.h == 3 ? CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED : CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM;
+        auto algorithm = (dims.h == 3 || dims.h == 5) ? CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED : CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM;
 
         cudnnCheckError(cudnnSetFilter4dDescriptor(cudnn->filter_desc, CUDNN_DATA_FLOAT, CUDNN_TENSOR_NCHW, dims.o, dims.i, dims.h, dims.w));
         cudnnCheckError(cudnnSetConvolution2dDescriptor(cudnn->conv_desc, padding, padding, 1, 1, 1, 1, CUDNN_CONVOLUTION, CUDNN_DATA_FLOAT));
-        cudnnCheckError(cudnnSetTensor4dDescriptor(cudnn->bias_desc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, 1, dims.o, 1, 1));
-        cudnnCheckError(cudnnSetActivationDescriptor(cudnn->activation, CUDNN_ACTIVATION_RELU, CUDNN_NOT_PROPAGATE_NAN, 0));
 
-        cudnnCheckError(cudnnConvolutionBiasActivationForward(
-            cudnn->handle, &alpha, cudnn->input_desc, input, cudnn->filter_desc, kernel, cudnn->conv_desc, algorithm, cudnn->workspace,
-            cudnn->workspace_size, &beta, cudnn->output_desc, output, cudnn->bias_desc, bias, cudnn->activation, cudnn->output_desc, output));
+        cudnnCheckError(cudnnConvolutionForward(
+            cudnn->handle, &one, cudnn->input_desc, input, cudnn->filter_desc, kernel, cudnn->conv_desc,
+            algorithm, cudnn->workspace, cudnn->workspace_size, &zero, cudnn->output_desc, output));
     }
 
     struct Dimensions {
@@ -117,9 +111,93 @@ struct Convolution {
     };
 
     float* kernel = nullptr;
-    float* bias = nullptr;
 
     Dimensions dims;
+};
+
+__global__ void add_kernel(float* output, const float* input) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    output[i] += input[i];
+}
+
+__global__ void relu_kernel(float* data) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (data[i] < 0) data[i] = 0;
+}
+
+struct BatchNorm {
+    BatchNorm() {}
+
+    BatchNorm(const BatchNorm&) = delete;
+
+    BatchNorm(BatchNorm&& other) {
+        this->~BatchNorm();
+
+        this->channels = other.channels;
+
+        this->gamma = other.gamma;
+        this->beta = other.beta;
+        this->mean = other.mean;
+        this->var = other.var;
+
+        other.gamma = nullptr;
+    }
+
+    ~BatchNorm() {
+        cudaFree(gamma);
+    }
+
+    void operator()(const float* input, float* output, const float* residual = nullptr) const {
+        static const float one  = 1.f;
+        static const float zero = 0.f;
+
+        auto cudnn = CudnnParams::get();
+
+        auto op = CUDNN_NORM_OPS_NORM; // residual ? CUDNN_NORM_OPS_NORM_ADD_ACTIVATION : CUDNN_NORM_OPS_NORM_ACTIVATION;
+
+        cudnnCheckError(cudnnSetTensor4dDescriptor(cudnn->norm_desc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, 1, channels, 1, 1));
+
+        cudnnCheckError(cudnnNormalizationForwardInference(
+            cudnn->handle, CUDNN_NORM_PER_CHANNEL, op, CUDNN_NORM_ALGO_STANDARD, &one, &zero,
+            cudnn->input_desc, input, cudnn->norm_desc, gamma, beta, cudnn->norm_desc, mean, var,
+            cudnn->input_desc, residual, cudnn->activation, cudnn->output_desc, output, 0.001, 1));
+
+        // temporary workaround until CUDNN_NORM_OPS_NORM_ACTIVATION and CUDNN_NORM_OPS_NORM_ADD_ACTIVATION are supported
+        int n, c, h, w;
+        cudnnDataType_t unused1;
+        int unused2;
+        cudnnCheckError(cudnnGetTensor4dDescriptor(CudnnParams::get()->input_desc, &unused1, &n, &c, &h, &w, &unused2, &unused2, &unused2, &unused2));
+
+        if (residual) add_kernel<<<n * c, h * w>>>(output, residual);
+        relu_kernel<<<n * c, h * w>>>(output);
+    }
+
+    int channels;
+
+    float* gamma = nullptr;
+    float* beta = nullptr;
+
+    float* mean = nullptr;
+    float* var = nullptr;
+};
+
+struct ResBlock {
+    ResBlock() {}
+    ResBlock(const ResBlock&) = delete;
+    ResBlock(ResBlock&& other) = default;
+
+    void operator()(const float* input, float* output, float* intermediate) {
+        conv1(input, intermediate);
+        bn1(intermediate, output);
+
+        conv2(output, intermediate);
+        bn2(intermediate, output, input);
+    }
+
+    Convolution conv1;
+    BatchNorm bn1;
+    Convolution conv2;
+    BatchNorm bn2;
 };
 
 __global__ void eval_layer_kernel(float* output, const float* input, const float* weights, const float* biases, int input_length, bool relu, bool tanh) {
@@ -159,7 +237,7 @@ struct Dense {
         cudaFree(bias);
     }
 
-    void operator()(float* input, float* output, int batch_size, bool relu, bool tanh) const {
+    void operator()(const float* input, float* output, int batch_size, bool relu, bool tanh) const {
         eval_layer_kernel<<<batch_size, dims.h>>>(output, input, weight, bias, dims.w, relu, tanh);
     }
 
@@ -193,16 +271,21 @@ struct CudaNeuralNet : public NeuralNet {
 
     float* tensor_mem_a;
     float* tensor_mem_b;
+    float* tensor_mem_c;
     float* policy_output;
     float* value_output;
 
     Convolution conv1;
-    std::vector<Convolution> tower;
+    BatchNorm bn1;
+
+    std::vector<ResBlock> tower;
 
     Convolution policy_conv;
+    BatchNorm policy_bn;
     Dense policy_fc;
 
     Convolution value_conv;
+    BatchNorm value_bn;
     Dense value_fc1;
     Dense value_fc2;
 };
@@ -210,6 +293,7 @@ struct CudaNeuralNet : public NeuralNet {
 CudaNeuralNet::CudaNeuralNet(int max_batch_size, int filters) : NeuralNet(max_batch_size) {
     cudaCheckError(cudaMalloc(&tensor_mem_a, max_batch_size * filters * 64 * sizeof(float)));
     cudaCheckError(cudaMalloc(&tensor_mem_b, max_batch_size * filters * 64 * sizeof(float)));
+    cudaCheckError(cudaMalloc(&tensor_mem_c, max_batch_size * filters * 64 * sizeof(float)));
 
     cudaCheckError(cudaMalloc(&policy_output, max_batch_size * 61 * sizeof(float)));
     value_output = &policy_output[max_batch_size * 60];
@@ -218,6 +302,7 @@ CudaNeuralNet::CudaNeuralNet(int max_batch_size, int filters) : NeuralNet(max_ba
 CudaNeuralNet::~CudaNeuralNet() {
     cudaFree(tensor_mem_a);
     cudaFree(tensor_mem_b);
+    cudaFree(tensor_mem_c);
     cudaFree(policy_output);
 }
 
@@ -228,24 +313,31 @@ void CudaNeuralNet::compute(const float* input, int count) {
 
     cudnnCheckError(cudnnSetTensor4dDescriptor(cudnn->input_desc,  CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, count, conv1.dims.i, 8, 8));
     cudnnCheckError(cudnnSetTensor4dDescriptor(cudnn->output_desc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, count, conv1.dims.o, 8, 8));
+    conv1(tensor_mem_a, tensor_mem_c);
+    cudnnCheckError(cudnnSetTensor4dDescriptor(cudnn->input_desc,  CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, count, conv1.dims.o, 8, 8));
+    bn1(tensor_mem_c, tensor_mem_b);
 
-    conv1(tensor_mem_a, tensor_mem_b);
-
-    cudnnCheckError(cudnnSetTensor4dDescriptor(cudnn->input_desc,  CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, count, tower.front().dims.i, 8, 8));
-
+    cudnnCheckError(cudnnSetTensor4dDescriptor(cudnn->input_desc,  CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, count, tower.front().conv1.dims.i, 8, 8));
+    cudnnCheckError(cudnnSetTensor4dDescriptor(cudnn->output_desc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, count, tower.front().conv1.dims.o, 8, 8));
     for (auto& conv : tower) {
         std::swap(tensor_mem_a, tensor_mem_b);
-        conv(tensor_mem_a, tensor_mem_b);
+        conv(tensor_mem_a, tensor_mem_b, tensor_mem_c);
     }
 
+    cudnnCheckError(cudnnSetTensor4dDescriptor(cudnn->input_desc,  CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, count, policy_conv.dims.i, 8, 8));
     cudnnCheckError(cudnnSetTensor4dDescriptor(cudnn->output_desc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, count, policy_conv.dims.o, 8, 8));
-    policy_conv(tensor_mem_b, tensor_mem_a);
+    policy_conv(tensor_mem_b, tensor_mem_c);
+    cudnnCheckError(cudnnSetTensor4dDescriptor(cudnn->input_desc,  CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, count, policy_conv.dims.o, 8, 8));
+    policy_bn(tensor_mem_c, tensor_mem_a);
     policy_fc(tensor_mem_a, policy_output, count, false, false);
 
+    cudnnCheckError(cudnnSetTensor4dDescriptor(cudnn->input_desc,  CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, count, value_conv.dims.i, 8, 8));
     cudnnCheckError(cudnnSetTensor4dDescriptor(cudnn->output_desc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, count, value_conv.dims.o, 8, 8));
-    value_conv(tensor_mem_b, tensor_mem_a);
-    value_fc1(tensor_mem_a, tensor_mem_b, count, true, false);
-    value_fc2(tensor_mem_b, value_output, count, false, true);
+    value_conv(tensor_mem_b, tensor_mem_c);
+    cudnnCheckError(cudnnSetTensor4dDescriptor(cudnn->input_desc,  CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, count, value_conv.dims.o, 8, 8));
+    value_bn(tensor_mem_c, tensor_mem_a);
+    value_fc1(tensor_mem_a, tensor_mem_c, count, true, false);
+    value_fc2(tensor_mem_c, value_output, count, false, true);
 }
 
 template<typename T>
@@ -261,15 +353,33 @@ void load_conv(Convolution* conv, std::istream& file) {
     auto n = conv->dims.h * conv->dims.w * conv->dims.i * conv->dims.o;
 
     cudaCheckError(cudaMalloc(&conv->kernel, n * sizeof(float)));
-    cudaCheckError(cudaMalloc(&conv->bias, conv->dims.o * sizeof(float)));
 
     auto buffer = std::make_unique<float[]>(n);
-
     file.read(reinterpret_cast<char*>(buffer.get()), n * sizeof(float));
-    cudaCheckError(cudaMemcpy(conv->kernel, buffer.get(), n * sizeof(float), cudaMemcpyHostToDevice));
 
-    file.read(reinterpret_cast<char*>(buffer.get()), conv->dims.o * sizeof(float));
-    cudaCheckError(cudaMemcpy(conv->bias, buffer.get(), conv->dims.o * sizeof(float), cudaMemcpyHostToDevice));
+    cudaCheckError(cudaMemcpy(conv->kernel, buffer.get(), n * sizeof(float), cudaMemcpyHostToDevice));
+}
+
+void load_norm(BatchNorm* norm, std::istream& file) {
+    norm->channels = read<int>(file);
+
+    auto sz = norm->channels * sizeof(float);
+
+    cudaCheckError(cudaMalloc(&norm->gamma, sz * 4));
+    norm->beta = &norm->gamma[norm->channels * 1];
+    norm->mean = &norm->gamma[norm->channels * 2];
+    norm->var  = &norm->gamma[norm->channels * 3];
+
+    auto buffer = std::make_unique<float[]>(sz * 4);
+    file.read(reinterpret_cast<char*>(buffer.get()), sz * 4);
+    cudaCheckError(cudaMemcpy(norm->gamma, buffer.get(), sz * 4, cudaMemcpyHostToDevice));
+}
+
+void load_resblock(ResBlock* block, std::istream& file) {
+    load_conv(&block->conv1, file);
+    load_norm(&block->bn1, file);
+    load_conv(&block->conv2, file);
+    load_norm(&block->bn2, file);
 }
 
 void load_dense(Dense* dense, std::istream& file) {
@@ -291,7 +401,7 @@ void load_dense(Dense* dense, std::istream& file) {
 
 std::unique_ptr<NeuralNet> load_net(std::istream& file, int max_batch_size) {
     auto version = read<int>(file);
-    if (version != 1) throw;
+    if (version != 2) throw;
 
     auto filters = read<int>(file);
     auto tower_size = read<int>(file);
@@ -299,10 +409,11 @@ std::unique_ptr<NeuralNet> load_net(std::istream& file, int max_batch_size) {
     auto network = std::make_unique<CudaNeuralNet>(max_batch_size, filters);
 
     load_conv(&network->conv1, file);
+    load_norm(&network->bn1, file);
 
     for (int i = 0; i < tower_size; ++i) {
         network->tower.emplace_back();
-        load_conv(&network->tower.back(), file);
+        load_resblock(&network->tower.back(), file);
     }
 
     auto policy_conv_count = read<int>(file);
@@ -310,6 +421,7 @@ std::unique_ptr<NeuralNet> load_net(std::istream& file, int max_batch_size) {
     if (policy_conv_count != 1 || policy_fc_count != 1) throw;
 
     load_conv(&network->policy_conv, file);
+    load_norm(&network->policy_bn, file);
     load_dense(&network->policy_fc, file);
 
     auto value_conv_count = read<int>(file);
@@ -317,6 +429,7 @@ std::unique_ptr<NeuralNet> load_net(std::istream& file, int max_batch_size) {
     if (value_conv_count != 1 || value_fc_count != 2) throw;
 
     load_conv(&network->value_conv, file);
+    load_norm(&network->value_bn, file);
     load_dense(&network->value_fc1, file);
     load_dense(&network->value_fc2, file);
 
