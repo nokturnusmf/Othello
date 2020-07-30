@@ -93,8 +93,72 @@ class Model(tf.keras.models.Model):
         return p, v
 
 
+NET_FILE_VERSION = 2
+
+
+def load_conv(file, layer):
+    shape = struct.unpack('iiii', file.read(16))
+
+    w = numpy.fromfile(file, dtype=numpy.float32, count=math.prod(shape))
+    w = numpy.flip(w.reshape(shape[0], shape[1], shape[2] * shape[3]), 2).reshape(shape).transpose((2, 3, 1, 0))
+
+    layer.kernel.assign(w)
+
+
+def load_norm(file, norm):
+    c, = struct.unpack('i', file.read(4))
+
+    for w in norm.weights:
+        w.assign(numpy.fromfile(file, dtype=numpy.float32, count=c))
+
+
+def load_fc(file, layer):
+    shape = struct.unpack('ii', file.read(8))
+
+    w = numpy.fromfile(file, dtype=numpy.float32, count=math.prod(shape)).reshape(shape).transpose()
+    b = numpy.fromfile(file, dtype=numpy.float32, count=shape[0])
+
+    layer.weights[0].assign(w)
+    layer.weights[1].assign(b)
+
+
 def load_network(path):
-    pass
+    with open(path, "rb") as file:
+        version, = struct.unpack('i', file.read(4))
+        assert version == NET_FILE_VERSION
+
+        filters, tower_size = struct.unpack('ii', file.read(8))
+        model = Model(tower_size, filters, 3)
+
+        model.build((None, 2, 8, 8))
+
+        load_conv(file, model.conv1)
+        load_norm(file, model.bn1)
+
+        for block in model.tower:
+            load_conv(file, block.conv1)
+            load_norm(file, block.bn1)
+            load_conv(file, block.conv2)
+            load_norm(file, block.bn2)
+
+        policy_conv_count, policy_fc_count = struct.unpack('ii', file.read(8))
+        assert policy_conv_count == 1
+        assert policy_fc_count   == 1
+
+        load_conv(file, model.policy_conv)
+        load_norm(file, model.policy_bn)
+        load_fc  (file, model.policy_fc)
+
+        value_conv_count, value_fc_count = struct.unpack('ii', file.read(8))
+        assert value_conv_count == 1
+        assert value_fc_count   == 2
+
+        load_conv(file, model.value_conv)
+        load_norm(file, model.value_bn)
+        load_fc  (file, model.value_fc1)
+        load_fc  (file, model.value_fc2)
+
+        return model
 
 
 def save_conv(file, layer):
@@ -130,10 +194,8 @@ def save_fc(file, layer):
 
 
 def save_network(path, model):
-    version = struct.pack('i', 2)
-
     with open(path, "wb") as file:
-        file.write(version)
+        file.write(struct.pack('i', NET_FILE_VERSION))
 
         filters = model.conv1.kernel.shape[3]
         file.write(struct.pack('ii', filters, len(model.tower)))
@@ -186,7 +248,7 @@ def value_loss(target, output):
 
 
 def main(model_path, save_path, data_path):
-    model = Model(8, 64, 3)
+    model = load_network(model_path)
     opt = tf.keras.optimizers.Adam(learning_rate=0.005)
     model.compile(optimizer=opt, loss=[policy_loss, value_loss])
 
