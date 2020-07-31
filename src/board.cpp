@@ -50,46 +50,6 @@ static inline size_t diagonal_mask_b(int r, int c) {
     return data[r + c];
 }
 
-Colour other(Colour c) {
-    return c == Colour::Black ? Colour::White : Colour::Black;
-}
-
-Board flip(const Board& board) {
-    return Board { board.white, board.black };
-}
-
-int nn_index(const Move& move) {
-    int i = move.row * 8 + move.col;
-    if (i > 36) {
-        return i - 4;
-    } else if (i > 28) {
-        return i - 2;
-    } else {
-        return i;
-    }
-}
-
-int played(const Board& board) {
-    return popcount(board.black) + popcount(board.white);
-}
-
-bool available(const Board& board, Colour colour) {
-    for (int i = 0; i < 8; ++i) {
-        for (int j = 0; j < 8; ++j) {
-            Board b = board;
-            if (play_move(&b, { i, j }, colour)) {
-                return true;
-            }
-        }
-    }
-
-    return false;
-}
-
-bool game_over(const Board& board) {
-    return played(board) >= 64 || (!available(board, Colour::Black) && !available(board, Colour::White));
-}
-
 bool play_move(Board* board, const Move& move, Colour colour) {
     size_t rc = move_bit(move.row, move.col);
     if ((board->black | board->white) & rc) {
@@ -125,6 +85,85 @@ bool play_move(Board* board, const Move& move, Colour colour) {
     }
 
     return changes;
+}
+
+Colour other(Colour c) {
+    return c == Colour::Black ? Colour::White : Colour::Black;
+}
+
+Board flip(const Board& board) {
+    return Board { board.white, board.black };
+}
+
+static inline size_t mirror(size_t x) {
+    size_t k1 = 0x00FF00FF00FF00FFUL;
+    size_t k2 = 0x0000FFFF0000FFFFUL;
+    x = ((x >>  8) & k1) | ((x & k1) <<  8);
+    x = ((x >> 16) & k2) | ((x & k2) << 16);
+    x = ( x >> 32)       | ( x       << 32);
+    return x;
+}
+
+static inline size_t transpose(size_t x) {
+    size_t t;
+    size_t k1 = 0x5500550055005500UL;
+    size_t k2 = 0x3333000033330000UL;
+    size_t k4 = 0x0f0f0f0f00000000UL;
+    t  = k4 & (x ^ (x << 28));
+    x ^=       t ^ (t >> 28) ;
+    t  = k2 & (x ^ (x << 14));
+    x ^=       t ^ (t >> 14) ;
+    t  = k1 & (x ^ (x <<  7));
+    x ^=       t ^ (t >>  7) ;
+    return x;
+}
+
+Board mirror(const Board& board) {
+    return { mirror(board.black), mirror(board.white) };
+}
+
+Board transpose(const Board& board) {
+    return { transpose(board.black), transpose(board.white) };
+}
+
+bool Board::operator==(const Board& other) const {
+    return this->black == other.black && this->white == other.white;
+}
+
+bool Move::pass() const {
+    return this->row < 0;
+}
+
+int nn_index(const Move& move) {
+    int i = move.row * 8 + move.col;
+    if (i > 36) {
+        return i - 4;
+    } else if (i > 28) {
+        return i - 2;
+    } else {
+        return i;
+    }
+}
+
+int played(const Board& board) {
+    return popcount(board.black) + popcount(board.white);
+}
+
+bool available(const Board& board, Colour colour) {
+    for (int i = 0; i < 8; ++i) {
+        for (int j = 0; j < 8; ++j) {
+            Board b = board;
+            if (play_move(&b, { i, j }, colour)) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+bool game_over(const Board& board) {
+    return played(board) >= 64 || (!available(board, Colour::Black) && !available(board, Colour::White));
 }
 
 int individual_score(const Board& board, Colour colour) {

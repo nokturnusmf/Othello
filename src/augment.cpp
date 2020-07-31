@@ -7,19 +7,6 @@
 #include "board.h"
 #include "self_play_data.h"
 
-namespace std {
-    template<>
-    struct hash<Board> {
-        size_t operator()(const Board& board) const {
-            return board.black - board.white;
-        }
-    };
-}
-
-bool operator==(const Board& a, const Board& b) {
-    return a.black == b.black && a.white == b.white;
-}
-
 struct Record {
     void add(const std::vector<MoveProb>& moves, float result) {
         w += result;
@@ -39,37 +26,15 @@ struct Record {
     int n = 0;
 };
 
-void mirror(Board* board, std::vector<MoveProb>* moves) {
-    board->black = __builtin_bswap64(board->black);
-    board->white = __builtin_bswap64(board->white);
-
+void mirror(std::vector<MoveProb>* moves) {
     for (auto& move : *moves) {
         move.row = 7 - move.row;
     }
 }
 
-inline size_t diagonal(size_t x) {
-    size_t t;
-    size_t k1 = 0xaa00aa00aa00aa00UL;
-    size_t k2 = 0xcccc0000cccc0000UL;
-    size_t k4 = 0xf0f0f0f00f0f0f0fUL;
-    t  =       x ^ (x << 36) ;
-    x ^= k4 & (t ^ (x >> 36));
-    t  = k2 & (x ^ (x << 18));
-    x ^=       t ^ (t >> 18) ;
-    t  = k1 & (x ^ (x <<  9));
-    x ^=       t ^ (t >>  9) ;
-    return x;
-}
-
-void rotate(Board* board, std::vector<MoveProb>* moves) {
-    board->black = __builtin_bswap64(diagonal(board->black));
-    board->white = __builtin_bswap64(diagonal(board->white));
-
+void transpose(std::vector<MoveProb>* moves) {
     for (auto& move : *moves) {
-        int t = move.col;
-        move.col = 7 - move.row;
-        move.row = t;
+        std::swap(move.row, move.col);
     }
 }
 
@@ -111,10 +76,12 @@ int main(int argc, char** argv) {
 
                 for (int k = 0; k < 4; ++k) {
                     map[board].add(pos.moves, val);
-                    mirror(&board, &pos.moves);
+                    board = mirror(board);
+                    mirror(&pos.moves);
+
                     map[board].add(pos.moves, val);
-                    mirror(&board, &pos.moves);
-                    rotate(&board, &pos.moves);
+                    board = transpose(board);
+                    transpose(&pos.moves);
                 }
             }
         }

@@ -167,7 +167,7 @@ std::ostream& operator<<(std::ostream& out, const Board& board) {
 }
 
 std::ostream& operator<<(std::ostream& out, const Move& move) {
-    if (move.row < 0) {
+    if (move.pass()) {
         out << "--";
     } else {
         out << static_cast<char>(move.col + 'A') << move.row + 1;
