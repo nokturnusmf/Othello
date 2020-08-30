@@ -64,6 +64,7 @@ private:
     }
 
     ~CudnnParams() {
+        cudaFree(workspace);
         cudnnDestroy(handle);
     }
 };
