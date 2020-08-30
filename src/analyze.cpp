@@ -47,17 +47,13 @@ std::optional<Position> parse_moves(const std::string& moves) {
     Colour colour = Colour::Black;
 
     for (int i = 0; moves[i]; i += 2) {
-        if (!available(board, colour)) colour = other(colour);
-
         auto move = parse_move(&moves[i]);
         if (!move || !play_move(&board, *move, colour)) {
             return std::nullopt;
         }
 
-        colour = other(colour);
+        if (available(board, other(colour))) colour = other(colour);
     }
-
-    if (!available(board, colour)) colour = other(colour);
 
     return Position { board, colour };
 }
