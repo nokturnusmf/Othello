@@ -175,12 +175,14 @@ std::ostream& operator<<(std::ostream& out, const Move& move) {
     return out;
 }
 
+bool order_next(const Tree::Next& a, const Tree::Next& b) {
+    return std::make_tuple(a.tree->n, -a.tree->w, a.tree->p) < std::make_tuple(b.tree->n, -b.tree->w, b.tree->p);
+}
+
 void build_pv(std::vector<Move>* moves, const Tree* tree, int minimum) {
     if (!tree->next || tree->n < minimum) return;
 
-    auto best = std::max_element(&tree->next[0], &tree->next[tree->next_count], [](const Tree::Next& a, const Tree::Next& b) {
-        return std::make_tuple(a.tree->n, -a.tree->w) < std::make_tuple(b.tree->n, -b.tree->w);
-    });
+    auto best = std::max_element(&tree->next[0], &tree->next[tree->next_count], order_next);
 
     moves->push_back(best->move);
     build_pv(moves, best->tree.get(), minimum);
@@ -205,10 +207,13 @@ void print_pv(const Tree* tree, bool absolute) {
 void print_moves(const Tree* tree) {
     std::cout << "\n   |    P    | Nc / Np |    Q\n---+---------+---------+----------\n";
 
+    auto buffer = std::make_unique<Tree::Next[]>(tree->next_count);
+    std::partial_sort_copy(&tree->next[0], &tree->next[tree->next_count], &buffer[0], &buffer[tree->next_count], order_next);
+
     float n = tree->n;
-    for (int i = 0; i < tree->next_count; ++i) {
-        auto move = tree->next[i].move;
-        auto sub = tree->next[i].tree;
+    for (int i = tree->next_count - 1; i >= 0; --i) {
+        auto move = buffer[i].move;
+        auto sub = buffer[i].tree;
 
         float p = sub->p;
         float v = sub->n / n;
