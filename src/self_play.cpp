@@ -8,8 +8,8 @@
 #include "neural.h"
 #include "self_play_data.h"
 
-extern const int TREE_GC_THRESHOLD = 0;
-extern const int TREE_GC_THREADS   = 0;
+extern const int TREE_GC_THRESHOLD = 1;
+extern const int TREE_GC_THREADS   = 1;
 
 struct GameStats {
     int black = 0;
@@ -108,9 +108,9 @@ void SelfPlay::worker() {
                 continue;
             }
 
-            mcts(tree, net, 1600);
+            mcts(tree, net, 800);
             game.emplace_back(tree);
-            tree = played(tree->board) < 32 ? select_move_proportional(tree) : select_move_visit_count(tree);
+            tree = played(tree->board) < 20 ? select_move_proportional(tree) : select_move_visit_count(tree);
         }
 
         game.result = net_score(tree->board);
@@ -120,7 +120,7 @@ void SelfPlay::worker() {
         std::cout << "\rGenerating games: " << buffer.pos << std::flush;
         lock.unlock();
 
-        Tree::tree_allocator.deallocate(root);
+        Tree::tree_gc.enqueue(root);
     }
 }
 

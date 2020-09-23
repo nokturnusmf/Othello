@@ -24,8 +24,8 @@ struct CudnnException : public std::exception {
     cudnnStatus_t status;
 };
 
-#define cudaCheckError(f) if (auto x = f) { throw CudaException(x); }
-#define cudnnCheckError(f) if (auto x = f) { throw CudnnException(x); }
+#define cudaCheckError(f) if (auto _error_code = f) { throw CudaException(_error_code); }
+#define cudnnCheckError(f) if (auto _error_code = f) { throw CudnnException(_error_code); }
 
 struct CudnnParams {
     static CudnnParams* get() {

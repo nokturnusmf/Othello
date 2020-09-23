@@ -32,13 +32,13 @@ class ResBlock(tf.keras.layers.Layer):
         self.bn2 = tf.keras.layers.BatchNormalization(axis=1)
 
 
-    def call(self, input):
+    def call(self, input, training=False):
         res = self.conv1(input)
-        res = self.bn1(res)
+        res = self.bn1(res, training)
         res = tf.nn.relu(res)
 
         res = self.conv2(res)
-        res = self.bn2(res)
+        res = self.bn2(res, training)
 
         res = input + res
         res = tf.nn.relu(res)
@@ -73,7 +73,7 @@ class Model(tf.keras.models.Model):
         x = tf.nn.relu(x)
 
         for block in self.tower:
-            x = block(x)
+            x = block(x, training)
 
         p = self.policy_conv(x)
         p = self.policy_bn(p, training)
@@ -254,7 +254,7 @@ def main(model_path, save_path, data_path):
 
     x, p, v = load_data(data_path)
 
-    model.fit(x, [p, v], epochs=4, batch_size=32, callbacks=[SaveCallback(save_path)])
+    model.fit(x, [p, v], epochs=2, batch_size=32, callbacks=[SaveCallback(save_path)])
 
 
 if __name__ == "__main__":
