@@ -157,8 +157,18 @@ void add_exploration_noise(Tree* tree) {
 
     std::gamma_distribution<float> dist(noise);
 
+    std::array<float, 60> buffer;
+    float total = 0;
+
     for (int i = 0; i < tree->next_count; ++i) {
-        (tree->next[i].tree->p *= 1 - frac) += dist(gen) * frac;
+        buffer[i] = dist(gen);
+        total += buffer[i];
+    }
+
+    float scale = frac / total;
+
+    for (int i = 0; i < tree->next_count; ++i) {
+        (tree->next[i].tree->p *= 1 - frac) += buffer[i] * scale;
     }
 }
 
@@ -181,7 +191,7 @@ Tree* select_child(Tree* tree) {
 
 float action_value(const Tree* next, int parent_visit) {
     static const float c_base = 19652.f;
-    static const float c_init = 4.25f;
+    static const float c_init = 2.25f;
 
     auto c = std::log((1 + parent_visit + c_base) / c_base) + c_init;
     auto u = c * next->p * std::sqrt(static_cast<float>(parent_visit)) / (1.f + next->n + next->n_inflight);
