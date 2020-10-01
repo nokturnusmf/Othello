@@ -9,9 +9,9 @@
 
 #include <getopt.h>
 
-#include "mcts.h"
-#include "tree.h"
 #include "board.h"
+#include "tree.h"
+#include "mcts.h"
 #include "neural.h"
 
 extern const int TREE_GC_THRESHOLD = 1;
@@ -171,14 +171,10 @@ std::ostream& operator<<(std::ostream& out, const Move& move) {
     return out;
 }
 
-bool order_next(const Tree::Next& a, const Tree::Next& b) {
-    return std::make_tuple(a.tree->n, -a.tree->w, a.tree->p) < std::make_tuple(b.tree->n, -b.tree->w, b.tree->p);
-}
-
 void build_pv(std::vector<Move>* moves, const Tree* tree, int minimum) {
     if (!tree->next || tree->n < minimum) return;
 
-    auto best = std::max_element(&tree->next[0], &tree->next[tree->next_count], order_next);
+    auto best = select_move_visit_count(tree);
 
     moves->push_back(best->move);
     build_pv(moves, best->tree.get(), minimum);

@@ -110,7 +110,9 @@ void SelfPlay::worker() {
 
             mcts(tree, net, 800);
             game.emplace_back(tree);
-            tree = played(tree->board) < 20 ? select_move_proportional(tree) : select_move_visit_count(tree);
+
+            auto next = played(tree->board) < 24 ? select_move_proportional(tree) : select_move_visit_count(tree);
+            tree = next->tree.get();
         }
 
         game.result = net_score(tree->board);

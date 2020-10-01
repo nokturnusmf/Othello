@@ -210,21 +210,31 @@ void expand_board(float* out, const Board& board, Colour colour) {
     }
 }
 
-Tree* select_move_proportional(Tree* tree) {
+bool order_next(const Tree::Next& a, const Tree::Next& b) {
+    return std::make_tuple(a.tree->n, -a.tree->w, a.tree->p) < std::make_tuple(b.tree->n, -b.tree->w, b.tree->p);
+}
+
+Tree::Next* select_move_visit_count(Tree* tree) {
+    return std::max_element(&tree->next[0], &tree->next[tree->next_count], order_next);
+}
+
+const Tree::Next* select_move_visit_count(const Tree* tree) {
+    return select_move_visit_count(const_cast<Tree*>(tree));
+}
+
+Tree::Next* select_move_proportional(Tree* tree) {
     int move = std::uniform_int_distribution<int>(0, tree->n - 1)(gen);
 
     int cur = 0;
     for (int j = 0; j < tree->next_count; ++j) {
         if (move <= (cur += tree->next[j].tree->n)) {
-            return tree->next[j].tree.get();
+            return &tree->next[j];
         }
     }
 
-    return tree;
+    __builtin_unreachable();
 }
 
-Tree* select_move_visit_count(Tree* tree) {
-    return std::max_element(&tree->next[0], &tree->next[tree->next_count], [](const Tree::Next& a, const Tree::Next& b) {
-        return std::make_tuple(a.tree->n, -a.tree->w) < std::make_tuple(b.tree->n, -b.tree->w);
-    })->tree.get();
+const Tree::Next* select_move_proportional(const Tree* tree) {
+    return select_move_proportional(const_cast<Tree*>(tree));
 }

@@ -8,8 +8,13 @@ struct NeuralNet;
 
 void mcts(Tree* tree, NeuralNet& net, int iterations, bool noise = true);
 
-Tree* select_move_proportional(Tree* tree);
-Tree* select_move_visit_count(Tree* tree);
+bool order_next(const Tree::Next& a, const Tree::Next& b);
+
+Tree::Next* select_move_visit_count(Tree* tree);
+const Tree::Next* select_move_visit_count(const Tree* tree);
+
+Tree::Next* select_move_proportional(Tree* tree);
+const Tree::Next* select_move_proportional(const Tree* tree);
 
 void init_next(Tree* tree, const float* inf);
 void backprop(std::vector<Tree*>& path, float value);
