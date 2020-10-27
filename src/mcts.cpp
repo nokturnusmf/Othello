@@ -10,6 +10,7 @@
 #include "neural.h"
 
 const float VIRTUAL_LOSS = 0.1f;
+const int MAX_COLLISIONS = 4;
 
 static thread_local std::default_random_engine gen(std::chrono::steady_clock::now().time_since_epoch().count());
 
@@ -21,10 +22,16 @@ struct Batch {
           value(std::make_unique<float[]>(net.get_max_batch_size())) {}
 
     void add_input(std::vector<Tree*>&& path) {
+        if (path.back()->n_inflight > 1 && ++collisions > MAX_COLLISIONS) {
+            this->go();
+            return;
+        }
+
+        entries.emplace_back(std::move(path));
+
         if (entries.size() == net.get_max_batch_size()) {
             this->go();
         }
-        entries.emplace_back(path);
     }
 
     void go() {
@@ -52,6 +59,7 @@ struct Batch {
         }
 
         entries.clear();
+        collisions = 0;
     }
 
     NeuralNet& net;
@@ -61,6 +69,8 @@ struct Batch {
     std::unique_ptr<float[]> value;
 
     std::vector<std::vector<Tree*>> entries;
+
+    int collisions = 0;
 };
 
 void mcts(Tree* tree, NeuralNet& net, int iterations, bool noise) {
@@ -68,28 +78,20 @@ void mcts(Tree* tree, NeuralNet& net, int iterations, bool noise) {
 
     if (!tree->n) {
         tree->n_inflight = 1;
-        tree->w += VIRTUAL_LOSS;
         batch.add_input(std::vector<Tree*>(1, tree));
         batch.go();
     }
 
     if (noise) add_exploration_noise(tree);
 
-    int collisions = 0, max_collisions = 4;
-    int cur_iterations = iterations, max_iterations = iterations * 3;
-    for (int i = 0; i < cur_iterations; ++i) {
-        tree->n_inflight++;
-        tree->w += VIRTUAL_LOSS;
-
+    for (int i = 0; i < iterations; ++i) {
         auto sim = tree;
+        tree->n_inflight++;
 
         std::vector<Tree*> path(1, sim);
         while (sim->n && !game_over(sim)) {
             sim = select_child(sim);
-
             sim->n_inflight++;
-            sim->w += VIRTUAL_LOSS;
-
             path.push_back(sim);
         }
 
@@ -98,17 +100,7 @@ void mcts(Tree* tree, NeuralNet& net, int iterations, bool noise) {
             auto value = (s > 0) - (s < 0);
             backprop(path, value);
         } else {
-            if (sim->n_inflight > 1) {
-                if (++collisions > max_collisions) {
-                    batch.go();
-                    collisions = 0;
-                }
-                if (cur_iterations < max_iterations) {
-                    ++cur_iterations;
-                }
-            } else {
-                batch.add_input(std::move(path));
-            }
+            batch.add_input(std::move(path));
         }
     }
 
@@ -142,12 +134,12 @@ void backprop(std::vector<Tree*>& path, float value) {
     auto colour = path.back()->colour;
     auto n = path.back()->n_inflight;
 
-    for (auto tree : path) {
-        tree->n += n;
-        tree->n_inflight -= n;
+    for (auto node : path) {
+        node->n += n;
+        node->n_inflight -= n;
 
-        auto value_ = tree->colour == colour ? value : -value;
-        tree->w += (value_ - VIRTUAL_LOSS) * n;
+        auto value_ = node->colour == colour ? value : -value;
+        node->w += value_ * n;
     }
 }
 
@@ -194,9 +186,11 @@ float action_value(const Tree* next, int parent_visit) {
     static const float c_init = 2.25f;
 
     auto c = std::log((1 + parent_visit + c_base) / c_base) + c_init;
-    auto u = c * next->p * std::sqrt(static_cast<float>(parent_visit)) / (1.f + next->n + next->n_inflight);
+    auto n = std::sqrt(static_cast<float>(parent_visit)) / (1.f + next->n + next->n_inflight);
+    auto u = c * next->p * n;
+    auto v = VIRTUAL_LOSS * next->n_inflight;
 
-    return u - next->q();
+    return u - next->q(v);
 }
 
 void expand_board(float* out, const Board& board, Colour colour) {

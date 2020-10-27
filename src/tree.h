@@ -33,8 +33,8 @@ struct Tree {
     float w = 0;
     float p = 0;
 
-    inline float q() const {
-        return n ? w / n : 0;
+    inline float q(float b = 0) const {
+        return n ? (w + b) / n : 0;
     }
 
     static inline BlockAllocator<Tree, 256, true> tree_allocator;

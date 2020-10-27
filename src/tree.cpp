@@ -76,10 +76,13 @@ void gen_next(Tree* tree, int depth) {
     for (int i = 0; i < 8; ++i) {
         for (int j = 0; j < 8; ++j) {
             Board board = tree->board;
-            if (play_move(&board, { i, j }, tree->colour)) {
+            Move move = { i, j };
+
+            if (play_move(&board, move, tree->colour)) {
                 auto sub = Tree::make_tree(board, next);
                 gen_next(sub.get(), depth - 1);
-                tree->add_next(Tree::Next { sub, { i, j } });
+
+                tree->add_next(Tree::Next { sub, move });
             }
         }
     }
@@ -87,6 +90,7 @@ void gen_next(Tree* tree, int depth) {
     if (!tree->next_count) {
         auto sub = Tree::make_tree(tree->board, next, tree->pass + 1);
         gen_next(sub.get(), depth);
+
         tree->next = Tree::next_allocator.allocate(tree->next_cap = 1);
         tree->add_next(Tree::Next { sub, { -1, -1 } });
     }
