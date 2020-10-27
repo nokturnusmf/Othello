@@ -116,16 +116,6 @@ struct Convolution {
     Dimensions dims;
 };
 
-__global__ void add_kernel(float* output, const float* input) {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    output[i] += input[i];
-}
-
-__global__ void relu_kernel(float* data) {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (data[i] < 0) data[i] = 0;
-}
-
 struct BatchNorm {
     BatchNorm() {}
 
@@ -157,6 +147,7 @@ struct BatchNorm {
         auto op = CUDNN_NORM_OPS_NORM; // residual ? CUDNN_NORM_OPS_NORM_ADD_ACTIVATION : CUDNN_NORM_OPS_NORM_ACTIVATION;
 
         cudnnCheckError(cudnnSetTensor4dDescriptor(cudnn->norm_desc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, 1, channels, 1, 1));
+        cudnnCheckError(cudnnSetActivationDescriptor(cudnn->activation, CUDNN_ACTIVATION_RELU, CUDNN_PROPAGATE_NAN, 0.0));
 
         cudnnCheckError(cudnnNormalizationForwardInference(
             cudnn->handle, CUDNN_NORM_PER_CHANNEL, op, CUDNN_NORM_ALGO_STANDARD, &one, &zero,
@@ -164,13 +155,8 @@ struct BatchNorm {
             cudnn->input_desc, residual, cudnn->activation, cudnn->output_desc, output, 0.001, 1));
 
         // temporary workaround until CUDNN_NORM_OPS_NORM_ACTIVATION and CUDNN_NORM_OPS_NORM_ADD_ACTIVATION are supported
-        int n, c, h, w;
-        cudnnDataType_t unused1;
-        int unused2;
-        cudnnCheckError(cudnnGetTensor4dDescriptor(CudnnParams::get()->input_desc, &unused1, &n, &c, &h, &w, &unused2, &unused2, &unused2, &unused2));
-
-        if (residual) add_kernel<<<n * c, h * w>>>(output, residual);
-        relu_kernel<<<n * c, h * w>>>(output);
+        if (residual) cudnnCheckError(cudnnAddTensor(cudnn->handle, &one, cudnn->output_desc, residual, &one, cudnn->output_desc, output));
+        cudnnCheckError(cudnnActivationForward(cudnn->handle, cudnn->activation, &one, cudnn->output_desc, output, &zero, cudnn->output_desc, output));
     }
 
     int channels;
