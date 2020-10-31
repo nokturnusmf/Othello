@@ -64,6 +64,17 @@ void Tree::add_next(const Next& n) {
     next[next_count++] = n;
 }
 
+WDL Tree::wdl() const {
+    auto q = this->w / n;
+    auto d = this->d / n;
+
+    return WDL {
+        (1 + q - d) / 2,
+        d,
+        (1 - q - d) / 2
+    };
+}
+
 bool game_over(const Tree* tree) {
     return tree->pass >= 2 || played(tree->board) == 64;
 }

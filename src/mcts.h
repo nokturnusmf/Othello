@@ -17,7 +17,7 @@ Tree::Next* select_move_proportional(Tree* tree);
 const Tree::Next* select_move_proportional(const Tree* tree);
 
 void init_next(Tree* tree, const float* inf);
-void backprop(std::vector<Tree*>& path, float value);
+void backprop(std::vector<Tree*>& path, float* value, bool softmax);
 
 void add_exploration_noise(Tree* tree);
 Tree* select_child(Tree* tree);

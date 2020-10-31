@@ -187,7 +187,7 @@ struct ResBlock {
     BatchNorm bn2;
 };
 
-__global__ void eval_layer_kernel(float* output, const float* input, const float* weights, const float* biases, int input_length, bool relu, bool tanh) {
+__global__ void eval_layer_kernel(float* output, const float* input, const float* weights, const float* biases, int input_length, bool relu) {
     int o = blockIdx.x * blockDim.x + threadIdx.x;
     int i = threadIdx.x;
     output[o] = 0;
@@ -199,7 +199,6 @@ __global__ void eval_layer_kernel(float* output, const float* input, const float
     output[o] += biases[i];
 
     if (relu && output[o] < 0) output[o] = 0;
-    else if (tanh) output[o] = tanhf(output[o]);
 }
 
 struct Dense {
@@ -224,8 +223,8 @@ struct Dense {
         cudaFree(bias);
     }
 
-    void operator()(const float* input, float* output, int batch_size, bool relu, bool tanh) const {
-        eval_layer_kernel<<<batch_size, dims.h>>>(output, input, weight, bias, dims.w, relu, tanh);
+    void operator()(const float* input, float* output, int batch_size, bool relu) const {
+        eval_layer_kernel<<<batch_size, dims.h>>>(output, input, weight, bias, dims.w, relu);
     }
 
     struct Dimensions {
@@ -253,12 +252,13 @@ struct CudaNeuralNet : public NeuralNet {
     }
 
     void retrieve_value(float* dst, int count) const {
-        cudaCheckError(cudaMemcpy(dst, value_output, count * sizeof(float), cudaMemcpyDeviceToHost));
+        cudaCheckError(cudaMemcpy(dst,  value_output,  3 * count * sizeof(float), cudaMemcpyDeviceToHost));
     }
 
     float* tensor_mem_a;
     float* tensor_mem_b;
     float* tensor_mem_c;
+
     float* policy_output;
     float* value_output;
 
@@ -282,15 +282,17 @@ CudaNeuralNet::CudaNeuralNet(int max_batch_size, int filters) : NeuralNet(max_ba
     cudaCheckError(cudaMalloc(&tensor_mem_b, max_batch_size * filters * 64 * sizeof(float)));
     cudaCheckError(cudaMalloc(&tensor_mem_c, max_batch_size * filters * 64 * sizeof(float)));
 
-    cudaCheckError(cudaMalloc(&policy_output, max_batch_size * 61 * sizeof(float)));
-    value_output = &policy_output[max_batch_size * 60];
+    cudaCheckError(cudaMalloc(&policy_output, max_batch_size * 60 * sizeof(float)));
+    cudaCheckError(cudaMalloc(&value_output,  max_batch_size *  3 * sizeof(float)));
 }
 
 CudaNeuralNet::~CudaNeuralNet() {
     cudaFree(tensor_mem_a);
     cudaFree(tensor_mem_b);
     cudaFree(tensor_mem_c);
+
     cudaFree(policy_output);
+    cudaFree(value_output);
 }
 
 void CudaNeuralNet::compute(const float* input, int count) {
@@ -316,15 +318,15 @@ void CudaNeuralNet::compute(const float* input, int count) {
     policy_conv(tensor_mem_b, tensor_mem_c);
     cudnnCheckError(cudnnSetTensor4dDescriptor(cudnn->input_desc,  CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, count, policy_conv.dims.o, 8, 8));
     policy_bn(tensor_mem_c, tensor_mem_a);
-    policy_fc(tensor_mem_a, policy_output, count, false, false);
+    policy_fc(tensor_mem_a, policy_output, count, false);
 
     cudnnCheckError(cudnnSetTensor4dDescriptor(cudnn->input_desc,  CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, count, value_conv.dims.i, 8, 8));
     cudnnCheckError(cudnnSetTensor4dDescriptor(cudnn->output_desc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, count, value_conv.dims.o, 8, 8));
     value_conv(tensor_mem_b, tensor_mem_c);
     cudnnCheckError(cudnnSetTensor4dDescriptor(cudnn->input_desc,  CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, count, value_conv.dims.o, 8, 8));
     value_bn(tensor_mem_c, tensor_mem_a);
-    value_fc1(tensor_mem_a, tensor_mem_c, count, true, false);
-    value_fc2(tensor_mem_c, value_output, count, false, true);
+    value_fc1(tensor_mem_a, tensor_mem_c, count, true);
+    value_fc2(tensor_mem_c, value_output, count, false);
 }
 
 template<typename T>
@@ -388,7 +390,7 @@ void load_dense(Dense* dense, std::istream& file) {
 
 std::unique_ptr<NeuralNet> load_net(std::istream& file, int max_batch_size) {
     auto version = read<int>(file);
-    if (version != 2) throw;
+    if (version != 3) throw;
 
     auto filters = read<int>(file);
     auto tower_size = read<int>(file);

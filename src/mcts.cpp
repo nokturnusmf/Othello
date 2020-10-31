@@ -19,7 +19,7 @@ struct Batch {
         : net(net),
           input(std::make_unique<float[]>(128 * net.get_max_batch_size())),
           policy(std::make_unique<float[]>(60 * net.get_max_batch_size())),
-          value(std::make_unique<float[]>(net.get_max_batch_size())) {}
+          value(std::make_unique<float[]>(3 * net.get_max_batch_size())) {}
 
     void add_input(std::vector<Tree*>&& path) {
         if (path.back()->n_inflight > 1 && ++collisions > MAX_COLLISIONS) {
@@ -55,7 +55,7 @@ struct Batch {
 
         for (int i = 0; i < count; ++i) {
             if (entries[i].back()->next_cap != 1) init_next(entries[i].back(), &policy[60 * i]);
-            backprop(entries[i], value[i]);
+            backprop(entries[i], &value[3 * i], true);
         }
 
         entries.clear();
@@ -97,8 +97,12 @@ void mcts(Tree* tree, NeuralNet& net, int iterations, bool noise) {
 
         if (game_over(sim)) {
             int s = net_score(sim->board, sim->colour);
-            auto value = (s > 0) - (s < 0);
-            backprop(path, value);
+            float value[3] = {
+                s >  0 ? 1.f : 0.f,
+                s == 0 ? 1.f : 0.f,
+                s <  0 ? 1.f : 0.f
+            };
+            backprop(path, value, false);
         } else {
             batch.add_input(std::move(path));
         }
@@ -130,16 +134,29 @@ void init_next(Tree* tree, const float* inf) {
     }
 }
 
-void backprop(std::vector<Tree*>& path, float value) {
+void backprop(std::vector<Tree*>& path, float* value, bool softmax) {
     auto colour = path.back()->colour;
     auto n = path.back()->n_inflight;
+
+    if (softmax) {
+        for (int i = 0; i < 3; ++i) {
+            value[i] = std::exp(value[i]);
+        }
+        float scale = 1 / std::accumulate(&value[0], &value[3], 0.f);
+        for (int i = 0; i < 3; ++i) {
+            value[i] *= scale;
+        }
+    }
+
+    float wl = (value[0] - value[2]) * n;
+    float d = value[1] * n;
 
     for (auto node : path) {
         node->n += n;
         node->n_inflight -= n;
 
-        auto value_ = node->colour == colour ? value : -value;
-        node->w += value_ * n;
+        node->w += node->colour == colour ? wl : -wl;
+        node->d += d;
     }
 }
 

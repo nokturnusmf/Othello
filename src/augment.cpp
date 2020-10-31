@@ -9,20 +9,22 @@
 
 struct Record {
     void add(const std::vector<MoveProb>& moves, float result) {
-        w += result;
+        w[result ? result > 0 ? 0 : 2 : 1] += 1;
+
         for (auto& move : moves) {
             p[nn_index(Move { move.row, move.col })] += move.p;
         }
+
         ++n;
     }
 
     void calculate() {
         for (float& f : p) f /= n;
-        w /= n;
+        for (float& f : w) f /= n;
     }
 
     float p[60] = {};
-    float w = 0.f;
+    float w[3] = {};
     int n = 0;
 };
 
@@ -111,7 +113,7 @@ int output(std::unordered_map<Board, Record>& map, const char* path) {
 
     std::cout << "Saving values...\n";
     for (auto& entry : map) {
-        file.write(reinterpret_cast<char*>(&entry.second.w), sizeof(float));
+        file.write(reinterpret_cast<char*>(entry.second.w), sizeof(entry.second.w));
     }
 
     return 0;

@@ -13,12 +13,16 @@ def load_data(path):
         n, = struct.unpack('N', file.read(8))
         x = read_array(file, (n, 2, 8, 8))
         p = read_array(file, (n, 60))
-        v = read_array(file, (n, 1))
+        v = read_array(file, (n, 3))
         return x, p, v
 
 
 def make_conv(filters, size):
-    return tf.keras.layers.Conv2D(filters, size, data_format="channels_first", padding="same", use_bias=False)
+    return tf.keras.layers.Conv2D(
+        filters, size,
+        data_format="channels_first", padding="same",
+        use_bias=False, kernel_regularizer=tf.keras.regularizers.l2(1e-4)
+    )
 
 
 class ResBlock(tf.keras.layers.Layer):
@@ -57,14 +61,14 @@ class Model(tf.keras.models.Model):
 
         self.flatten = tf.keras.layers.Flatten()
 
-        self.policy_conv = make_conv(2, 1)
+        self.policy_conv = make_conv(8, 3)
         self.policy_bn = tf.keras.layers.BatchNormalization(axis=1)
         self.policy_fc = tf.keras.layers.Dense(60)
 
-        self.value_conv = make_conv(1, 1)
+        self.value_conv = make_conv(6, 3)
         self.value_bn = tf.keras.layers.BatchNormalization(axis=1)
         self.value_fc1 = tf.keras.layers.Dense(256)
-        self.value_fc2 = tf.keras.layers.Dense(1)
+        self.value_fc2 = tf.keras.layers.Dense(3)
 
 
     def call(self, x, training=False):
@@ -88,12 +92,11 @@ class Model(tf.keras.models.Model):
         v = self.value_fc1(v)
         v = tf.nn.relu(v)
         v = self.value_fc2(v)
-        v = tf.math.tanh(v)
 
         return p, v
 
 
-NET_FILE_VERSION = 2
+NET_FILE_VERSION = 3
 
 
 def load_conv(file, layer):
@@ -234,22 +237,13 @@ def policy_loss(target, output):
     return tf.nn.softmax_cross_entropy_with_logits(labels=target, logits=output)
 
 
-# def policy_loss(target, output):
-#     legal = tf.greater_equal(target, 0)
-#
-#     target_ = tf.where(legal, target, 0.)
-#     output_ = tf.where(legal, output, -1e9)
-#
-#     return tf.nn.softmax_cross_entropy_with_logits(labels=target_, logits=output_)
-
-
 def value_loss(target, output):
-    return tf.losses.mean_squared_error(target, output)
+    return tf.nn.softmax_cross_entropy_with_logits(labels=target, logits=output)
 
 
 def main(model_path, save_path, data_path):
     model = load_network(model_path)
-    opt = tf.keras.optimizers.Adam(learning_rate=0.005)
+    opt = tf.keras.optimizers.SGD(learning_rate=0.01, momentum=0.9)
     model.compile(optimizer=opt, loss=[policy_loss, value_loss])
 
     x, p, v = load_data(data_path)

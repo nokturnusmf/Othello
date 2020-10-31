@@ -3,6 +3,16 @@
 #include "board.h"
 #include "block_allocator.h"
 
+struct WDL {
+    float w = 0;
+    float d = 0;
+    float l = 0;
+
+    inline WDL operator-() const {
+        return { l, d, w };
+    }
+};
+
 struct Tree {
     Tree(Tree&& other);
     Tree& operator=(Tree&& other);
@@ -27,6 +37,7 @@ struct Tree {
     int n = 0;
 
     float w = 0;
+    float d = 0;
     float p = 0;
 
     Colour colour;
@@ -41,6 +52,8 @@ struct Tree {
     inline float q(float b = 0) const {
         return n ? (w + b) / n : 0;
     }
+
+    WDL wdl() const;
 
     static inline BlockAllocator<Tree, 256, true> tree_allocator;
     static inline BlockAllocator<Next, 4096, true> next_allocator;

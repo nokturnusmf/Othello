@@ -25,8 +25,7 @@ struct Position {
 struct Arguments {
     std::unique_ptr<NeuralNet> net;
     Position pos;
-    int iterations = 1000000;
-    bool absolute = false;
+    int iterations = 10000;
 };
 
 std::optional<Move> parse_move(const char* move) {
@@ -88,11 +87,11 @@ std::optional<Arguments> parse_args(int argc, char** argv) {
         { "moves",      1, 0, 'm' },
         { "board",      1, 0, 'b' },
         { "iterations", 1, 0, 'i' },
-        { "absolute",   0, 0, 'a' },
+        { "raw",        0, 0, 'r' },
         { 0,            0, 0,  0  }
     };
 
-    for (int c; (c = getopt_long(argc, argv, "m:b:i:a", long_options, 0)) != -1;) {
+    for (int c; (c = getopt_long(argc, argv, "m:b:i:r", long_options, 0)) != -1;) {
         switch (c) {
         case 'm':
             if (auto pos = parse_moves(optarg)) {
@@ -120,8 +119,8 @@ std::optional<Arguments> parse_args(int argc, char** argv) {
             }
             break;
 
-        case 'a':
-            args.absolute = true;
+        case 'r':
+            args.iterations = 0;
             break;
         }
     }
@@ -171,6 +170,11 @@ std::ostream& operator<<(std::ostream& out, const Move& move) {
     return out;
 }
 
+std::ostream& operator<<(std::ostream& out, const WDL& wdl) {
+    out << wdl.w * 100 << " W / " << wdl.d * 100 << " D / " << wdl.l * 100 << " L";
+    return out;
+}
+
 void build_pv(std::vector<Move>* moves, const Tree* tree, int minimum) {
     if (!tree->next || tree->n < minimum) return;
 
@@ -180,23 +184,22 @@ void build_pv(std::vector<Move>* moves, const Tree* tree, int minimum) {
     build_pv(moves, best->tree.get(), minimum);
 }
 
-void print_pv(const Tree* tree, bool absolute) {
+void print_pv(const Tree* tree) {
     std::vector<Move> pv;
     build_pv(&pv, tree, tree->n / 1000);
 
-    auto eval = tree->q();
-    if (absolute && tree->colour == Colour::White) {
-        eval = -eval;
-    }
+    std::cout << std::setprecision(1);
 
     std::cout << "\nPV: ";
     for (auto& move : pv) {
         std::cout << move << ' ';
     }
-    std::cout << "~ " << eval << "\n";
+    std::cout << "~ " << tree->wdl() << '\n';
 }
 
 void print_moves(const Tree* tree) {
+    std::cout << std::setprecision(5);
+
     std::cout << "\n   |    P    | Nc / Np |    Q\n---+---------+---------+----------\n";
 
     auto buffer = std::make_unique<Tree::Next[]>(tree->next_count);
@@ -221,13 +224,13 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    std::cout << std::fixed << std::setprecision(5) << std::right;
+    std::cout << std::fixed << std::right;
     std::cout << args->pos.board << '\n' << (args->pos.colour == Colour::Black ? "Black" : "White") << " to play\n";
 
     auto tree = Tree::make_tree(args->pos.board, args->pos.colour);
     mcts(tree.get(), *args->net, args->iterations, false);
 
-    print_pv(tree.get(), args->absolute);
+    print_pv(tree.get());
     print_moves(tree.get());
 
     Tree::tree_gc.enqueue(tree);
