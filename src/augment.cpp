@@ -46,50 +46,47 @@ void expand_board(float* out, const Board& board) {
     }
 }
 
-int main(int argc, char** argv) {
-    if (argc < 3) {
-        std::cerr << "Usage: " << argv[0] << " <output> <inputs>\n";
-        return 1;
+void process_position(std::unordered_map<Board, Record>& map, SearchProb pos, int z) {
+    auto board = pos.colour == Colour::Black ? pos.board : flip(pos.board);
+    float val  = pos.colour == Colour::Black ? z : -z;
+
+    for (int k = 0; k < 4; ++k) {
+        map[board].add(pos.moves, val);
+        board = mirror(board);
+        mirror(&pos.moves);
+
+        map[board].add(pos.moves, val);
+        board = transpose(board);
+        transpose(&pos.moves);
+    }
+}
+
+void process_file(std::unordered_map<Board, Record>& map, const char* path) {
+    std::ifstream file(path);
+    if (!file) {
+        std::cerr << "Skipping '" << path << "': " << std::strerror(errno) << '\n';
+        return;
     }
 
-    std::unordered_map<Board, Record> map;
+    size_t n;
+    file.read(reinterpret_cast<char*>(&n), sizeof(n));
 
-    for (int i = 2; i < argc; ++i) {
-        std::ifstream file(argv[i]);
-        if (!file) {
-            std::cerr << "Skipping '" << argv[i] << "': " << std::strerror(errno) << '\n';
-            continue;
+    for (size_t j = 0; j < n; ++j) {
+        std::cout << '\r' << path << "... " << j + 1 << '/' << n << std::flush;
+
+        auto game = load_game(file);
+        int z = (game.result > 0) - (game.result < 0);
+
+        for (auto& pos : game) {
+            process_position(map, std::move(pos), z);
         }
-
-        size_t n;
-        file.read(reinterpret_cast<char*>(&n), sizeof(n));
-
-        for (size_t j = 0; j < n; ++j) {
-            std::cout << '\r' << argv[i] << "... " << j + 1 << '/' << n << std::flush;
-
-            auto game = load_game(file);
-            int z = (game.result > 0) - (game.result < 0);
-
-            for (auto& pos : game) {
-                auto board = pos.colour == Colour::Black ? pos.board : flip(pos.board);
-                float val  = pos.colour == Colour::Black ? z : -z;
-
-                for (int k = 0; k < 4; ++k) {
-                    map[board].add(pos.moves, val);
-                    board = mirror(board);
-                    mirror(&pos.moves);
-
-                    map[board].add(pos.moves, val);
-                    board = transpose(board);
-                    transpose(&pos.moves);
-                }
-            }
-        }
-
-        std::cout << '\n';
     }
 
-    std::ofstream file(argv[1]);
+    std::cout << '\n';
+}
+
+int output(std::unordered_map<Board, Record>& map, const char* path) {
+    std::ofstream file(path);
     if (!file) {
         std::perror("Couldn't open output file");
         return 1;
@@ -116,4 +113,21 @@ int main(int argc, char** argv) {
     for (auto& entry : map) {
         file.write(reinterpret_cast<char*>(&entry.second.w), sizeof(float));
     }
+
+    return 0;
+}
+
+int main(int argc, char** argv) {
+    if (argc < 3) {
+        std::cerr << "Usage: " << argv[0] << " <output> <inputs>\n";
+        return 1;
+    }
+
+    std::unordered_map<Board, Record> map;
+
+    for (int i = 2; i < argc; ++i) {
+        process_file(map, argv[i]);
+    }
+
+    return output(map, argv[1]);
 }
