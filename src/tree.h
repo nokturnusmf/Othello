@@ -21,17 +21,22 @@ struct Tree {
     void add_next(const Next& n);
 
     Board board;
-    Colour colour;
-    int pass;
 
     Ticket<Next> next = nullptr;
-    int next_count = 0;
-    int next_cap = 0;
 
     int n = 0;
-    int n_inflight = 0;
+
     float w = 0;
     float p = 0;
+
+    Colour colour;
+
+    short n_inflight = 0;
+
+    char pass;
+
+    char next_count = 0;
+    char next_cap = 0;
 
     inline float q(float b = 0) const {
         return n ? (w + b) / n : 0;
