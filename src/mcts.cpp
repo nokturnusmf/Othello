@@ -234,13 +234,17 @@ const Tree::Next* select_move_visit_count(const Tree* tree) {
 }
 
 Tree::Next* select_move_proportional(Tree* tree) {
-    int move = std::uniform_int_distribution<int>(0, tree->n - 1)(gen);
+    int n = 0;
+    for (int i = 0; i < tree->next_count; ++i) {
+        n += tree->next[i].tree->n;
+    }
+
+    int move = std::uniform_int_distribution<int>(0, n - 1)(gen);
 
     int cur = 0;
-    for (int j = 0; j < tree->next_count; ++j) {
-        if (move <= (cur += tree->next[j].tree->n)) {
-            return &tree->next[j];
-        }
+    for (int i = 0; i < tree->next_count; ++i) {
+        cur += tree->next[i].tree->n;
+        if (move < cur) return &tree->next[i];
     }
 
     __builtin_unreachable();
