@@ -130,6 +130,10 @@ bool Board::operator==(const Board& other) const {
     return this->black == other.black && this->white == other.white;
 }
 
+bool Move::operator==(Move other) const {
+    return this->row == other.row && this->col == other.col;
+}
+
 bool Move::pass() const {
     return this->row < 0;
 }

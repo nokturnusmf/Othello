@@ -170,7 +170,7 @@ std::ostream& operator<<(std::ostream& out, const Move& move) {
     return out;
 }
 
-std::ostream& operator<<(std::ostream& out, const WDL& wdl) {
+std::ostream& operator<<(std::ostream& out, const WDLProb& wdl) {
     out << wdl.w * 100 << " W / " << wdl.d * 100 << " D / " << wdl.l * 100 << " L";
     return out;
 }

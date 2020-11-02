@@ -64,11 +64,11 @@ void Tree::add_next(const Next& n) {
     next[next_count++] = n;
 }
 
-WDL Tree::wdl() const {
+WDLProb Tree::wdl() const {
     auto q = this->w / n;
     auto d = this->d / n;
 
-    return WDL {
+    return {
         (1 + q - d) / 2,
         d,
         (1 - q - d) / 2

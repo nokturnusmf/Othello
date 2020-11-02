@@ -3,14 +3,10 @@
 #include "board.h"
 #include "block_allocator.h"
 
-struct WDL {
+struct WDLProb {
     float w = 0;
     float d = 0;
     float l = 0;
-
-    inline WDL operator-() const {
-        return { l, d, w };
-    }
 };
 
 struct Tree {
@@ -53,7 +49,7 @@ struct Tree {
         return n ? (w + b) / n : 0;
     }
 
-    WDL wdl() const;
+    WDLProb wdl() const;
 
     static inline BlockAllocator<Tree, 256, true> tree_allocator;
     static inline BlockAllocator<Next, 4096, true> next_allocator;

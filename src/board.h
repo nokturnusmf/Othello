@@ -19,6 +19,7 @@ struct Move {
     int row;
     int col;
 
+    bool operator==(Move other) const;
     bool pass() const;
 };
 
