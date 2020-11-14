@@ -80,13 +80,20 @@ std::optional<Position> parse_board(const std::string& str) {
     }
 }
 
+std::optional<int> parse_int(const char* str, int base = 10) {
+    char* end;
+    int res = strtol(str, &end, base);
+    return end > str ? std::make_optional(res) : std::nullopt;
+}
+
 std::optional<Arguments> parse_args(int argc, char** argv) {
     Arguments args;
+    int batch_size = 256;
 
     static struct option long_options[] = {
         { "moves",      1, 0, 'm' },
-        { "board",      1, 0, 'b' },
         { "iterations", 1, 0, 'i' },
+        { "batch-size", 1, 0, 'b' },
         { "raw",        0, 0, 'r' },
         { 0,            0, 0,  0  }
     };
@@ -102,19 +109,20 @@ std::optional<Arguments> parse_args(int argc, char** argv) {
                 return std::nullopt;
             }
 
-        case 'b':
-            if (auto pos = parse_board(optarg)) {
-                args.pos = *pos;
-                break;
+        case 'i':
+            if (auto iterations = parse_int(optarg)) {
+                args.iterations = *iterations;
             } else {
-                std::cerr << "Error parsing board\n";
+                std::cerr << "Invalid number of iterations: " << optarg << '\n';
                 return std::nullopt;
             }
+            break;
 
-        case 'i':
-            args.iterations = atol(optarg);
-            if (!args.iterations) {
-                std::cerr << "Invalid number of iterations: " << optarg << '\n';
+        case 'b':
+            if (auto size = parse_int(optarg)) {
+                batch_size = *size;
+            } else {
+                std::cerr << "Invalid batch size: " << optarg << '\n';
                 return std::nullopt;
             }
             break;
@@ -132,7 +140,7 @@ std::optional<Arguments> parse_args(int argc, char** argv) {
             return std::nullopt;
         }
 
-        args.net = load_net(file, 256);
+        args.net = load_net(file, batch_size);
         return args;
     } else {
         std::cerr << "Usage: " << argv[0] << " [options] <net>\n";
