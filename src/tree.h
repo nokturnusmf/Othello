@@ -24,8 +24,6 @@ struct Tree {
         Move move;
     };
 
-    void add_next(const Next& n);
-
     Board board;
 
     Ticket<Next> next = nullptr;
@@ -43,7 +41,6 @@ struct Tree {
     char pass;
 
     char next_count = 0;
-    char next_cap = 0;
 
     inline float q(float b = 0) const {
         return n ? (w + b) / n : 0;

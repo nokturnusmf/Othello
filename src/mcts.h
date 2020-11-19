@@ -4,7 +4,7 @@
 
 #include "tree.h"
 
-struct NeuralNet;
+class NeuralNet;
 
 void mcts(Tree* tree, NeuralNet& net, int iterations, bool noise = true);
 

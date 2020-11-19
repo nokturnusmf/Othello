@@ -15,7 +15,7 @@ Tree::~Tree() {
         tree_allocator.deallocate(next[i].tree);
     }
 
-    next_allocator.deallocate(next, next_cap);
+    next_allocator.deallocate(next, next_count);
 }
 
 Ticket<Tree> Tree::make_tree() {
@@ -38,30 +38,8 @@ Tree& Tree::operator=(Tree&& other) {
     *this = other;
 
     other.next = nullptr;
-    other.next_count = 0;
-    other.next_cap = 0;
 
     return *this;
-}
-
-void Tree::add_next(const Next& n) {
-    if (!next.get()) {
-        next = next_allocator.allocate(next_cap = 12);
-    } else if (next_count == next_cap) {
-        auto new_cap = next_cap * 3 / 2;
-        auto replace = next_allocator.allocate(new_cap);
-
-        for (int i = 0; i < next_count; ++i) {
-            replace[i] = next[i];
-        }
-
-        next_allocator.deallocate(next, next_cap);
-
-        next = replace;
-        next_cap = new_cap;
-    }
-
-    next[next_count++] = n;
 }
 
 WDLProb Tree::wdl() const {
@@ -79,31 +57,49 @@ bool game_over(const Tree* tree) {
     return tree->pass >= 2 || played(tree->board) == 64;
 }
 
+struct MoveAndBoard {
+    Board board;
+    Move move;
+};
+
+int get_moves(MoveAndBoard* results, const Board& board, Colour colour) {
+    int count = 0;
+
+    for (int i = 0; i < 8; ++i) {
+        for (int j = 0; j < 8; ++j) {
+            auto copy = board;
+            Move move = { i, j };
+            if (play_move(&copy, move, colour)) {
+                results[count++] = { copy, move };
+            }
+        }
+    }
+
+    return count;
+}
+
+void add_next(Tree* tree, const Board& board, Colour colour, char pass, Move move, int depth, int i) {
+    auto subtree = Tree::make_tree(board, colour, pass);
+    gen_next(subtree.get(), depth);
+
+    tree->next[i] = Tree::Next { subtree, move };
+}
+
 void gen_next(Tree* tree, int depth) {
     if (depth == 0 || game_over(tree)) return;
 
     Colour next = other(tree->colour);
 
-    for (int i = 0; i < 8; ++i) {
-        for (int j = 0; j < 8; ++j) {
-            Board board = tree->board;
-            Move move = { i, j };
+    MoveAndBoard moves[60];
+    int count = get_moves(moves, tree->board, tree->colour);
 
-            if (play_move(&board, move, tree->colour)) {
-                auto sub = Tree::make_tree(board, next);
-                gen_next(sub.get(), depth - 1);
+    tree->next_count = count ? count : 1;
+    tree->next = Tree::next_allocator.allocate(tree->next_count);
 
-                tree->add_next(Tree::Next { sub, move });
-            }
-        }
-    }
-
-    if (!tree->next_count) {
-        auto sub = Tree::make_tree(tree->board, next, tree->pass + 1);
-        gen_next(sub.get(), depth);
-
-        tree->next = Tree::next_allocator.allocate(tree->next_cap = 1);
-        tree->add_next(Tree::Next { sub, { -1, -1 } });
+    if (!count) {
+        add_next(tree, tree->board, next, tree->pass + 1, { -1, -1 }, depth, 0);
+    } else for (int i = 0; i < count; ++i) {
+        add_next(tree, moves[i].board, next, 0, moves[i].move, depth - 1, i);
     }
 }
 
@@ -112,9 +108,7 @@ void ensure_next(Tree* tree, int depth) {
 
     if (!tree->next_count) {
         gen_next(tree, depth);
-    }
-
-    for (int i = 0; i < tree->next_count; ++i) {
+    } else for (int i = 0; i < tree->next_count; ++i) {
         ensure_next(tree->next[i].tree.get(), depth - 1);
     }
 }

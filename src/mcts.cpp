@@ -54,7 +54,7 @@ struct Batch {
         net.retrieve_value(value.get(), count);
 
         for (int i = 0; i < count; ++i) {
-            if (entries[i].back()->next_cap != 1) init_next(entries[i].back(), &policy[60 * i]);
+            init_next(entries[i].back(), &policy[60 * i]);
             backprop(entries[i], &value[3 * i], true);
         }
 
@@ -112,6 +112,8 @@ void mcts(Tree* tree, NeuralNet& net, int iterations, bool noise) {
 }
 
 void init_next(Tree* tree, const float* inf) {
+    if (tree->next[0].move.pass()) return;
+
     std::array<float, 60> buffer;
 
     float max_p = std::numeric_limits<float>::lowest();

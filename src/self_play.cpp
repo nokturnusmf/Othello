@@ -103,7 +103,7 @@ void SelfPlay::worker() {
         while (!game_over(tree)) {
             ensure_next(tree);
 
-            if (tree->next_cap == 1) {
+            if (tree->next[0].move.pass()) {
                 tree = tree->next[0].tree.get();
                 continue;
             }
@@ -143,7 +143,7 @@ int main(int argc, char** argv) {
         std::cerr << "Error loading net\n";
         return 1;
     }
-    auto net = load_net(net_file, 256);
+    auto net = load_net(net_file, 32);
 
     SelfPlay sp(*net, games, 1);
     sp.wait();
