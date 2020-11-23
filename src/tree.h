@@ -42,8 +42,8 @@ struct Tree {
 
     char next_count = 0;
 
-    inline float q(float b = 0) const {
-        return n ? (w + b) / n : 0;
+    inline float q() const {
+        return n ? w / n : 0;
     }
 
     WDLProb wdl() const;

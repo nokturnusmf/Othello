@@ -9,7 +9,6 @@
 
 #include "neural.h"
 
-const float VIRTUAL_LOSS = 0.1f;
 const int MAX_COLLISIONS = 4;
 
 static thread_local std::default_random_engine gen(std::chrono::steady_clock::now().time_since_epoch().count());
@@ -22,7 +21,7 @@ struct Batch {
           value(std::make_unique<float[]>(3 * net.get_max_batch_size())) {}
 
     void add_input(std::vector<Tree*>&& path) {
-        if (path.back()->n_inflight > 1 && ++collisions > MAX_COLLISIONS) {
+        if (path.back()->n_inflight >= MAX_COLLISIONS) {
             this->go();
             return;
         }
@@ -59,7 +58,6 @@ struct Batch {
         }
 
         entries.clear();
-        collisions = 0;
     }
 
     NeuralNet& net;
@@ -69,8 +67,6 @@ struct Batch {
     std::unique_ptr<float[]> value;
 
     std::vector<std::vector<Tree*>> entries;
-
-    int collisions = 0;
 };
 
 void mcts(Tree* tree, NeuralNet& net, int iterations, bool noise) {
@@ -202,14 +198,13 @@ Tree* select_child(Tree* tree) {
 
 float action_value(const Tree* next, int parent_visit) {
     static const float c_base = 19652.f;
-    static const float c_init = 2.25f;
+    static const float c_init = 1.75f;
 
     auto c = std::log((1 + parent_visit + c_base) / c_base) + c_init;
     auto n = std::sqrt(static_cast<float>(parent_visit)) / (1.f + next->n + next->n_inflight);
     auto u = c * next->p * n;
-    auto v = VIRTUAL_LOSS * next->n_inflight;
 
-    return u - next->q(v);
+    return u - next->q();
 }
 
 void expand_board(float* out, const Board& board, Colour colour) {
