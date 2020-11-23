@@ -1,10 +1,5 @@
 #include "tree.h"
 
-extern const int TREE_GC_THRESHOLD;
-extern const int TREE_GC_THREADS;
-
-GarbageCollector<Tree, 256, true> Tree::tree_gc(&Tree::tree_allocator, TREE_GC_THRESHOLD, TREE_GC_THREADS);
-
 Tree::Tree(const Board& board, Colour colour, int pass)
     : board(board), colour(colour), pass(pass) {}
 

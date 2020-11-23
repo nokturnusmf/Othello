@@ -51,8 +51,6 @@ struct Tree {
     static inline BlockAllocator<Tree, 256, true> tree_allocator;
     static inline BlockAllocator<Next, 4096, true> next_allocator;
 
-    static GarbageCollector<Tree, 256, true> tree_gc;
-
     template<typename T, unsigned N, bool B>
     friend class BlockAllocator;
 

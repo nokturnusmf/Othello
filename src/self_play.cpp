@@ -8,9 +8,6 @@
 #include "neural.h"
 #include "self_play_data.h"
 
-extern const int TREE_GC_THRESHOLD = 1;
-extern const int TREE_GC_THREADS   = 1;
-
 struct GameStats {
     int black = 0;
     int white = 0;
@@ -122,7 +119,7 @@ void SelfPlay::worker() {
         std::cout << "\rGenerating games: " << buffer.pos << std::flush;
         lock.unlock();
 
-        Tree::tree_gc.enqueue(root);
+        Tree::tree_allocator.deallocate(root);
     }
 }
 

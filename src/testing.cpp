@@ -13,9 +13,6 @@
 #include "mcts.h"
 #include "neural.h"
 
-extern const int TREE_GC_THRESHOLD = 1;
-extern const int TREE_GC_THREADS   = 1;
-
 class Engine {
 public:
     Engine(std::unique_ptr<NeuralNet>&& net, int iterations, int threshold, std::string&& name);
@@ -212,11 +209,11 @@ Engine::Engine(Engine&& other) {
 }
 
 Engine::~Engine() {
-    Tree::tree_gc.enqueue(root);
+    Tree::tree_allocator.deallocate(root);
 }
 
 void Engine::new_game() {
-    Tree::tree_gc.enqueue(root);
+    Tree::tree_allocator.deallocate(root);
 
     root = Tree::make_tree();
     current = root.get();

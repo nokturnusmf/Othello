@@ -14,9 +14,6 @@
 #include "mcts.h"
 #include "neural.h"
 
-extern const int TREE_GC_THRESHOLD = 1;
-extern const int TREE_GC_THREADS   = 1;
-
 struct Position {
     Board board;
     Colour colour = Colour::Black;
@@ -241,5 +238,5 @@ int main(int argc, char** argv) {
     print_pv(tree.get());
     print_moves(tree.get());
 
-    Tree::tree_gc.enqueue(tree);
+    Tree::tree_allocator.deallocate(tree);
 }

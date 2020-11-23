@@ -1,9 +1,7 @@
 #pragma once
 
 #include <vector>
-#include <thread>
 #include <mutex>
-#include <condition_variable>
 
 template<typename T>
 struct Ticket {
@@ -59,39 +57,6 @@ private:
     std::vector<Block> blocks;
 
     std::mutex mut;
-};
-
-template<typename T, unsigned N, bool Destroy>
-class GarbageCollector {
-public:
-    GarbageCollector(BlockAllocator<T, N, Destroy>* allocator, long threshold = 1, int thread_count = 1);
-
-    GarbageCollector(const GarbageCollector<T, N, Destroy>&) = delete;
-    GarbageCollector& operator=(const GarbageCollector<T, N, Destroy>&) = delete;
-
-    ~GarbageCollector();
-
-    void enqueue(Ticket<T> ticket, size_t n = 1);
-
-private:
-    void worker();
-
-    struct Deallocation {
-        Deallocation(Ticket<T> t, size_t n) : ticket(t), n(n) {}
-        Ticket<T> ticket;
-        size_t n;
-    };
-
-    BlockAllocator<T, N, Destroy>* allocator;
-
-    std::vector<Deallocation> queue;
-    long threshold;
-
-    std::vector<std::thread> thread_pool;
-    bool running;
-
-    std::mutex mut;
-    std::condition_variable cv;
 };
 
 #include "block_allocator.impl"
