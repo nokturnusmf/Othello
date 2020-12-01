@@ -26,13 +26,13 @@ def make_conv(filters, size):
 
 
 class ResBlock(tf.keras.layers.Layer):
-    def __init__(self, filters, size):
+    def __init__(self, filters):
         super(ResBlock, self).__init__()
 
-        self.conv1 = make_conv(filters, size)
+        self.conv1 = make_conv(filters, 3)
         self.bn1 = tf.keras.layers.BatchNormalization(axis=1)
 
-        self.conv2 = make_conv(filters, size)
+        self.conv2 = make_conv(filters, 3)
         self.bn2 = tf.keras.layers.BatchNormalization(axis=1)
 
 
@@ -51,21 +51,21 @@ class ResBlock(tf.keras.layers.Layer):
 
 
 class Model(tf.keras.models.Model):
-    def __init__(self, blocks, filters, size):
+    def __init__(self, blocks, filters):
         super(Model, self).__init__()
 
-        self.conv1 = make_conv(filters, 5)
+        self.conv1 = make_conv(filters, 3)
         self.bn1 = tf.keras.layers.BatchNormalization(axis=1)
 
-        self.tower = [ResBlock(filters, size) for _ in range(blocks)]
+        self.tower = [ResBlock(filters) for _ in range(blocks)]
 
         self.flatten = tf.keras.layers.Flatten()
 
-        self.policy_conv = make_conv(8, 3)
+        self.policy_conv = make_conv(8, 1)
         self.policy_bn = tf.keras.layers.BatchNormalization(axis=1)
         self.policy_fc = tf.keras.layers.Dense(60)
 
-        self.value_conv = make_conv(6, 3)
+        self.value_conv = make_conv(6, 1)
         self.value_bn = tf.keras.layers.BatchNormalization(axis=1)
         self.value_fc1 = tf.keras.layers.Dense(256)
         self.value_fc2 = tf.keras.layers.Dense(3)
@@ -131,7 +131,7 @@ def load_network(path):
         assert version == NET_FILE_VERSION
 
         filters, tower_size = struct.unpack('ii', file.read(8))
-        model = Model(tower_size, filters, 3)
+        model = Model(tower_size, filters)
 
         model.build((None, 2, 8, 8))
 
@@ -230,7 +230,7 @@ class SaveCallback(tf.keras.callbacks.Callback):
 
 
     def on_epoch_end(self, epoch, logs):
-        save_network(self.prefix + '_' + str(epoch + 1), self.model)
+        save_network(self.prefix + str(epoch + 1), self.model)
 
 
 def policy_loss(target, output):
@@ -243,12 +243,12 @@ def value_loss(target, output):
 
 def main(model_path, save_path, data_path):
     model = load_network(model_path)
-    opt = tf.keras.optimizers.SGD(learning_rate=0.01, momentum=0.9)
-    model.compile(optimizer=opt, loss=[policy_loss, value_loss])
+    opt = tf.keras.optimizers.SGD(learning_rate=0.02, momentum=0.9, nesterov=True)
+    model.compile(optimizer=opt, loss=[policy_loss, value_loss], metrics=["accuracy"])
 
     x, p, v = load_data(data_path)
 
-    model.fit(x, [p, v], epochs=2, batch_size=32, callbacks=[SaveCallback(save_path)])
+    model.fit(x, [p, v], epochs=10, batch_size=256, callbacks=[SaveCallback(save_path), tf.keras.callbacks.LearningRateScheduler(lambda e, r: r * 0.9)])
 
 
 if __name__ == "__main__":
