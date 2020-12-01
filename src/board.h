@@ -30,8 +30,8 @@ static inline size_t move_bit(size_t r, size_t c) {
 Colour other(Colour c);
 Board flip(const Board& board);
 
-Board mirror(const Board& board);
 Board transpose(const Board& board);
+Board anti_transpose(const Board& board);
 
 int nn_index(const Move& move);
 

@@ -95,15 +95,6 @@ Board flip(const Board& board) {
     return Board { board.white, board.black };
 }
 
-static inline size_t mirror(size_t x) {
-    size_t k1 = 0x00FF00FF00FF00FFUL;
-    size_t k2 = 0x0000FFFF0000FFFFUL;
-    x = ((x >>  8) & k1) | ((x & k1) <<  8);
-    x = ((x >> 16) & k2) | ((x & k2) << 16);
-    x = ( x >> 32)       | ( x       << 32);
-    return x;
-}
-
 static inline size_t transpose(size_t x) {
     size_t t;
     size_t k1 = 0x5500550055005500UL;
@@ -118,12 +109,26 @@ static inline size_t transpose(size_t x) {
     return x;
 }
 
-Board mirror(const Board& board) {
-    return { mirror(board.black), mirror(board.white) };
+static inline size_t anti_transpose(size_t x) {
+    size_t t;
+    size_t k1 = 0xaa00aa00aa00aa00;
+    size_t k2 = 0xcccc0000cccc0000;
+    size_t k4 = 0xf0f0f0f00f0f0f0f;
+    t  =       x ^ (x << 36) ;
+    x ^= k4 & (t ^ (x >> 36));
+    t  = k2 & (x ^ (x << 18));
+    x ^=       t ^ (t >> 18) ;
+    t  = k1 & (x ^ (x <<  9));
+    x ^=       t ^ (t >>  9) ;
+    return x;
 }
 
 Board transpose(const Board& board) {
     return { transpose(board.black), transpose(board.white) };
+}
+
+Board anti_transpose(const Board& board) {
+    return { anti_transpose(board.black), anti_transpose(board.white) };
 }
 
 bool Board::operator==(const Board& other) const {

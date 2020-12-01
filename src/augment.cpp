@@ -28,15 +28,19 @@ struct Record {
     int n = 0;
 };
 
-void mirror(std::vector<MoveProb>* moves) {
-    for (auto& move : *moves) {
-        move.row = 7 - move.row;
+void transpose(SearchProb* pos) {
+    pos->board = transpose(pos->board);
+    for (auto& move : pos->moves) {
+        std::swap(move.row, move.col);
     }
 }
 
-void transpose(std::vector<MoveProb>* moves) {
-    for (auto& move : *moves) {
+void anti_transpose(SearchProb* pos) {
+    pos->board = anti_transpose(pos->board);
+    for (auto& move : pos->moves) {
         std::swap(move.row, move.col);
+        move.row = 7 - move.row;
+        move.col = 7 - move.col;
     }
 }
 
@@ -49,17 +53,12 @@ void expand_board(float* out, const Board& board) {
 }
 
 void process_position(std::unordered_map<Board, Record>& map, SearchProb pos, int z) {
-    auto board = pos.colour == Colour::Black ? pos.board : flip(pos.board);
     float val  = pos.colour == Colour::Black ? z : -z;
 
-    for (int k = 0; k < 4; ++k) {
+    for (int i = 0; i < 4; ++i) {
+        auto board = pos.colour == Colour::Black ? pos.board : flip(pos.board);
         map[board].add(pos.moves, val);
-        board = mirror(board);
-        mirror(&pos.moves);
-
-        map[board].add(pos.moves, val);
-        board = transpose(board);
-        transpose(&pos.moves);
+        i % 2 == 0 ? transpose(&pos) : anti_transpose(&pos);
     }
 }
 
@@ -73,8 +72,8 @@ void process_file(std::unordered_map<Board, Record>& map, const char* path) {
     size_t n;
     file.read(reinterpret_cast<char*>(&n), sizeof(n));
 
-    for (size_t j = 0; j < n; ++j) {
-        std::cout << '\r' << path << "... " << j + 1 << '/' << n << std::flush;
+    for (size_t i = 0; i < n; ++i) {
+        std::cout << '\r' << path << "... " << i + 1 << '/' << n << std::flush;
 
         auto game = load_game(file);
         int z = (game.result > 0) - (game.result < 0);
