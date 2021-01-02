@@ -197,10 +197,10 @@ Tree* select_child(Tree* tree) {
 }
 
 float action_value(const Tree* next, int parent_visit) {
-    static const float c_base = 19652.f;
-    static const float c_init = 1.75f;
+    static const float c_base = 0.0001f;
+    static const float c_init = 1.25f;
 
-    auto c = std::log((1 + parent_visit + c_base) / c_base) + c_init;
+    auto c = std::log(1 + parent_visit * c_base) + c_init;
     auto n = std::sqrt(static_cast<float>(parent_visit)) / (1.f + next->n + next->n_inflight);
     auto u = c * next->p * n;
 
