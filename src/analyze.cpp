@@ -91,7 +91,6 @@ std::optional<Arguments> parse_args(int argc, char** argv) {
         { "moves",      1, 0, 'm' },
         { "iterations", 1, 0, 'i' },
         { "batch-size", 1, 0, 'b' },
-        { "raw",        0, 0, 'r' },
         { 0,            0, 0,  0  }
     };
 
@@ -122,10 +121,6 @@ std::optional<Arguments> parse_args(int argc, char** argv) {
                 std::cerr << "Invalid batch size: " << optarg << '\n';
                 return std::nullopt;
             }
-            break;
-
-        case 'r':
-            args.iterations = 0;
             break;
         }
     }
