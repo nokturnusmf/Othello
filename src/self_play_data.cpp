@@ -3,7 +3,7 @@
 MoveProb::MoveProb(Move move, int n, int parent_n) {
     row = move.row;
     col = move.col;
-    p = static_cast<float>(n) / parent_n;
+    p = n / static_cast<float>(parent_n - 1);
 }
 
 SearchProb::SearchProb(const Tree* tree) {
