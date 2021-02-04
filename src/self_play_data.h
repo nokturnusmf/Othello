@@ -8,20 +8,21 @@
 #include "tree.h"
 
 struct MoveProb {
-    MoveProb() = default;
-    MoveProb(Move move, int n, int parent_n);
-
-    int row;
-    int col;
-    float p;
+    Move move;
+    int n;
 };
 
 struct SearchProb {
     SearchProb() = default;
-    SearchProb(const Tree* tree);
+    SearchProb(const Tree* tree, Move played);
 
     Board board;
     Colour colour;
+
+    Move played;
+
+    float q;
+    float d;
 
     std::vector<MoveProb> moves;
 };

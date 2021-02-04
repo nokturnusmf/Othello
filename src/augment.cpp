@@ -8,39 +8,56 @@
 #include "self_play_data.h"
 
 struct Record {
-    void add(const std::vector<MoveProb>& moves, float result) {
-        w[result ? result > 0 ? 0 : 2 : 1] += 1;
+    void add(const std::vector<MoveProb>& moves, int z, float q, float d) {
+        this->w[z ? z > 0 ? 0 : 2 : 1] += 1;
 
+        this->q[0] += (1 + q - d) / 2;
+        this->q[1] += d;
+        this->q[2] += (1 - q - d) / 2;
+
+        float N = 0;
         for (auto& move : moves) {
-            p[nn_index(Move { move.row, move.col })] += move.p;
+            N += move.n;
+        }
+        for (auto& move : moves) {
+            this->p[nn_index(move.move)] += move.n / N;
         }
 
-        ++n;
+        ++this->n;
     }
 
-    void calculate() {
+    void calculate(float r = 0) {
         for (float& f : p) f /= n;
-        for (float& f : w) f /= n;
+
+        for (int i = 0; i < 3; ++i) {
+            w[i] /= n;
+            q[i] /= n;
+
+            w[i] = q[i] * r + w[i] * (1 - r);
+        }
     }
 
     float p[60] = {};
+
     float w[3] = {};
+    float q[3] = {};
+
     int n = 0;
 };
 
 void transpose(SearchProb* pos) {
     pos->board = transpose(pos->board);
-    for (auto& move : pos->moves) {
-        std::swap(move.row, move.col);
+    for (auto& m : pos->moves) {
+        std::swap(m.move.row, m.move.col);
     }
 }
 
 void anti_transpose(SearchProb* pos) {
     pos->board = anti_transpose(pos->board);
-    for (auto& move : pos->moves) {
-        std::swap(move.row, move.col);
-        move.row = 7 - move.row;
-        move.col = 7 - move.col;
+    for (auto& m : pos->moves) {
+        std::swap(m.move.row, m.move.col);
+        m.move.row = 7 - m.move.row;
+        m.move.col = 7 - m.move.col;
     }
 }
 
@@ -53,11 +70,11 @@ void expand_board(float* out, const Board& board) {
 }
 
 void process_position(std::unordered_map<Board, Record>& map, SearchProb pos, int z) {
-    float val  = pos.colour == Colour::Black ? z : -z;
+    z = pos.colour == Colour::Black ? z : -z;
 
     for (int i = 0; i < 4; ++i) {
         auto board = pos.colour == Colour::Black ? pos.board : flip(pos.board);
-        map[board].add(pos.moves, val);
+        map[board].add(pos.moves, z, pos.q, pos.d);
         i % 2 == 0 ? transpose(&pos) : anti_transpose(&pos);
     }
 }
@@ -96,10 +113,12 @@ int output(std::unordered_map<Board, Record>& map, const char* path) {
     size_t total = map.size();
     file.write(reinterpret_cast<char*>(&total), sizeof(total));
 
-    std::cout << "Saving boards...\n";
     for (auto& entry : map) {
         entry.second.calculate();
+    }
 
+    std::cout << "Saving boards...\n";
+    for (auto& entry : map) {
         float buffer[128];
         expand_board(buffer, entry.first);
         file.write(reinterpret_cast<char*>(buffer), sizeof(buffer));
