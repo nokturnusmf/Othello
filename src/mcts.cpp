@@ -69,7 +69,9 @@ struct Batch {
     std::vector<std::vector<Tree*>> entries;
 };
 
-void mcts(Tree* tree, NeuralNet& net, int iterations, bool noise) {
+void mcts(Tree* tree, NeuralNet& net, SearchStopper& stop, bool noise) {
+    stop.reset();
+
     Batch batch(net);
 
     if (!tree->n) {
@@ -80,7 +82,7 @@ void mcts(Tree* tree, NeuralNet& net, int iterations, bool noise) {
 
     if (noise) add_exploration_noise(tree);
 
-    for (int i = 0; i < iterations; ++i) {
+    while (!stop(tree)) {
         auto sim = tree;
         tree->n_inflight++;
 
@@ -103,8 +105,6 @@ void mcts(Tree* tree, NeuralNet& net, int iterations, bool noise) {
             batch.add_input(std::move(path));
         }
     }
-
-    batch.go();
 }
 
 void init_next(Tree* tree, const float* inf) {

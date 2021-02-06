@@ -12,6 +12,7 @@
 #include "board.h"
 #include "tree.h"
 #include "mcts.h"
+#include "stop.h"
 #include "neural.h"
 
 struct Position {
@@ -22,7 +23,7 @@ struct Position {
 struct Arguments {
     std::unique_ptr<NeuralNet> net;
     Position pos;
-    int iterations = 10000;
+    std::unique_ptr<SearchStopper> stop = search_stop_iterations(10000);
 };
 
 std::optional<Move> parse_move(const char* move) {
@@ -90,11 +91,12 @@ std::optional<Arguments> parse_args(int argc, char** argv) {
     static struct option long_options[] = {
         { "moves",      1, 0, 'm' },
         { "iterations", 1, 0, 'i' },
+        { "time",       1, 0, 't' },
         { "batch-size", 1, 0, 'b' },
         { 0,            0, 0,  0  }
     };
 
-    for (int c; (c = getopt_long(argc, argv, "m:b:i:r", long_options, 0)) != -1;) {
+    for (int c; (c = getopt_long(argc, argv, "m:b:i:t:", long_options, 0)) != -1;) {
         switch (c) {
         case 'm':
             if (auto pos = parse_moves(optarg)) {
@@ -107,9 +109,18 @@ std::optional<Arguments> parse_args(int argc, char** argv) {
 
         case 'i':
             if (auto iterations = parse_int(optarg)) {
-                args.iterations = *iterations;
+                args.stop = search_stop_iterations(*iterations);
             } else {
                 std::cerr << "Invalid number of iterations: " << optarg << '\n';
+                return std::nullopt;
+            }
+            break;
+
+        case 't':
+            if (auto milliseconds = parse_int(optarg)) {
+                args.stop = search_stop_time(*milliseconds);
+            } else {
+                std::cerr << "Invalid number of milliseconds: " << optarg << '\n';
                 return std::nullopt;
             }
             break;
@@ -228,7 +239,7 @@ int main(int argc, char** argv) {
     std::cout << args->pos.board << '\n' << (args->pos.colour == Colour::Black ? "Black" : "White") << " to play\n";
 
     auto tree = Tree::make_tree(args->pos.board, args->pos.colour);
-    mcts(tree.get(), *args->net, args->iterations, false);
+    mcts(tree.get(), *args->net, *args->stop, false);
 
     print_pv(tree.get());
     print_moves(tree.get());

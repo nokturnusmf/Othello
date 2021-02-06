@@ -88,38 +88,38 @@ private:
 };
 
 void SelfPlay::worker() {
+    auto stop = search_stop_kld(200, 5000, 100, 6e-6);
+
     while (running) {
         std::unique_lock lock(mut);
         if (--remaining < 0) break;
         lock.unlock();
 
         Game game;
-        auto root = Tree::make_tree();
-        auto tree = root.get();
 
-        while (!game_over(tree)) {
-            ensure_next(tree);
+        Board board;
+        Colour colour = Colour::Black;
 
-            if (tree->next[0].move.pass()) {
-                tree = tree->next[0].tree.get();
-                continue;
-            }
+        while (!game_over(board)) {
+            auto tree = Tree::make_tree(board, colour);
+            mcts(tree.get(), net, *stop, true);
 
-            mcts(tree, net, 800);
+            auto next = played(tree->board) < 24 ? select_move_proportional(tree.get()) : select_move_visit_count(tree.get());
+            game.emplace_back(tree.get(), next->move);
 
-            auto next = played(tree->board) < 24 ? select_move_proportional(tree) : select_move_visit_count(tree);
-            game.emplace_back(tree, next->move);
-            tree = next->tree.get();
+            board  = next->tree->board;
+            colour = next->tree->colour;
+            if (!available(board, colour)) colour = other(colour);
+
+            Tree::tree_allocator.deallocate(tree);
         }
 
-        game.result = net_score(tree->board);
+        game.result = net_score(board);
 
         lock.lock();
         buffer.add_game(std::move(game));
         std::cout << "\rGenerating games: " << buffer.pos << std::flush;
         lock.unlock();
-
-        Tree::tree_allocator.deallocate(root);
     }
 }
 

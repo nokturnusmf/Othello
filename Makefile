@@ -5,7 +5,7 @@ CUC_FLAGS := $(foreach option,$(CXX_FLAGS),-Xcompiler $(option))
 
 LIBS := -lcudnn
 
-COMMON_SRC   := board tree mcts neural
+COMMON_SRC   := board tree mcts stop neural
 SELFPLAY_SRC := self_play self_play_data $(COMMON_SRC)
 ANALYZE_SRC  := analyze $(COMMON_SRC)
 AUGMENT_SRC  := augment board self_play_data

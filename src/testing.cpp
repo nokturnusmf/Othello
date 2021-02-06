@@ -220,7 +220,7 @@ void Engine::new_game() {
 }
 
 Move Engine::make_move() {
-    mcts(current, *net, iterations, false);
+    mcts(current, *net, *search_stop_iterations(iterations), false);
     auto next = played(current->board) >= threshold
         ? select_move_visit_count (current)
         : select_move_proportional(current);

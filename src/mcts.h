@@ -3,10 +3,11 @@
 #include <vector>
 
 #include "tree.h"
+#include "stop.h"
 
 class NeuralNet;
 
-void mcts(Tree* tree, NeuralNet& net, int iterations, bool noise = true);
+void mcts(Tree* tree, NeuralNet& net, SearchStopper& stop, bool noise = true);
 
 bool order_next(const Tree::Next& a, const Tree::Next& b);
 
