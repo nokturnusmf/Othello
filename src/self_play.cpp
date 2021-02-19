@@ -3,6 +3,7 @@
 #include <vector>
 #include <thread>
 #include <mutex>
+#include <cmath>
 
 #include "mcts.h"
 #include "neural.h"
@@ -104,7 +105,8 @@ void SelfPlay::worker() {
             auto tree = Tree::make_tree(board, colour);
             mcts(tree.get(), net, *stop, true);
 
-            auto next = played(tree->board) < 24 ? select_move_proportional(tree.get()) : select_move_visit_count(tree.get());
+            float temperature = std::exp(-std::pow(played(board) / 40, 3));
+            auto next = select_move_temperature(tree.get(), temperature);
             game.emplace_back(tree.get(), next->move);
 
             board  = next->tree->board;

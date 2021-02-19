@@ -105,6 +105,8 @@ void mcts(Tree* tree, NeuralNet& net, SearchStopper& stop, bool noise) {
             batch.add_input(std::move(path));
         }
     }
+
+    batch.go();
 }
 
 void init_next(Tree* tree, const float* inf) {
@@ -230,23 +232,42 @@ const Tree::Next* select_move_visit_count(const Tree* tree) {
     return select_move_visit_count(const_cast<Tree*>(tree));
 }
 
-Tree::Next* select_move_proportional(Tree* tree) {
-    int n = 0;
+Tree::Next* select_move_temperature(Tree* tree, float temperature, float threshold) {
+    int max_n = 0;
+    float max_eval = -1.f;
     for (int i = 0; i < tree->next_count; ++i) {
-        n += tree->next[i].tree->n;
+        if (tree->next[i].tree->n > max_n) {
+            max_n = tree->next[i].tree->n;
+            max_eval = -tree->next[i].tree->q();
+        }
     }
 
-    int move = std::uniform_int_distribution<int>(0, n - 1)(gen);
+    float min_eval = max_eval - threshold;
+    float scale = 1.f / max_n;
 
-    int cur = 0;
-    for (int i = 0; i < tree->next_count; ++i) {
-        cur += tree->next[i].tree->n;
-        if (move < cur) return &tree->next[i];
+    std::array<float, 60> buffer;
+    float total = 0;
+
+    for (int i = 0, j = 0; i < tree->next_count; ++i) {
+        if (-tree->next[i].tree->q() >= min_eval) {
+            total += std::pow(tree->next[i].tree->n * scale, 1 / temperature);
+            buffer[j++] = total;
+        }
+    }
+
+    float move = std::uniform_real_distribution<float>(0, total)(gen);
+
+    for (int i = 0, j = 0; i < tree->next_count; ++i) {
+        if (-tree->next[i].tree->q() >= min_eval) {
+            if (move <= buffer[j++]) {
+                return &tree->next[i];
+            }
+        }
     }
 
     __builtin_unreachable();
 }
 
-const Tree::Next* select_move_proportional(const Tree* tree) {
-    return select_move_proportional(const_cast<Tree*>(tree));
+const Tree::Next* select_move_temperature(const Tree* tree, float temperature, float threshold) {
+    return select_move_temperature(const_cast<Tree*>(tree), temperature, threshold);
 }

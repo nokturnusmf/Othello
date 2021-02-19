@@ -14,8 +14,8 @@ bool order_next(const Tree::Next& a, const Tree::Next& b);
 Tree::Next* select_move_visit_count(Tree* tree);
 const Tree::Next* select_move_visit_count(const Tree* tree);
 
-Tree::Next* select_move_proportional(Tree* tree);
-const Tree::Next* select_move_proportional(const Tree* tree);
+Tree::Next* select_move_temperature(Tree* tree, float temperature = 1, float threshold = 2);
+const Tree::Next* select_move_temperature(const Tree* tree, float temperature = 1, float threshold = 2);
 
 void init_next(Tree* tree, const float* inf);
 void backprop(std::vector<Tree*>& path, float* value, bool softmax);

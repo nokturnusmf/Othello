@@ -15,7 +15,7 @@
 
 class Engine {
 public:
-    Engine(std::unique_ptr<NeuralNet>&& net, int iterations, int threshold, std::string&& name);
+    Engine(std::unique_ptr<NeuralNet>&& net, int iterations, float temperature, float threshold, std::string&& name);
     Engine(Engine&& other);
     ~Engine();
 
@@ -31,7 +31,8 @@ private:
     std::unique_ptr<NeuralNet> net;
 
     int iterations;
-    int threshold;
+    float temperature;
+    float threshold;
 
     Ticket<Tree> root = nullptr;
     Tree* current = nullptr;
@@ -109,6 +110,12 @@ std::optional<long> parse_int(const char* str, int base = 10) {
     return end > str ? std::make_optional(res) : std::nullopt;
 }
 
+std::optional<float> parse_float(const char* str) {
+    char* end;
+    float res = strtof(str, &end);
+    return end > str ? std::make_optional(res) : std::nullopt;
+}
+
 std::unique_ptr<NeuralNet> load_net(const char* path, int batch_size) {
     std::ifstream file(path);
     if (!file) {
@@ -122,18 +129,20 @@ std::optional<Arguments> parse_args(int argc, char** argv) {
     Arguments args;
 
     std::optional<int> iterations;
-    int threshold = 0;
-    int batch_size = 256;
+    float temperature = 1;
+    float threshold = 2;
+    int batch_size = 32;
 
     static struct option long_options[] = {
-        { "iterations", 1, 0, 'i' },
-        { "threshold",  1, 0, 't' },
-        { "repeats",    1, 0, 'r' },
-        { "batch-size", 1, 0, 'b' },
-        { 0,            0, 0,  0  }
+        { "iterations",  1, 0, 'i' },
+        { "temperature", 1, 0, 'T' },
+        { "threshold",   1, 0, 't' },
+        { "repeats",     1, 0, 'r' },
+        { "batch-size",  1, 0, 'b' },
+        { 0,             0, 0,  0  }
     };
 
-    for (int c; (c = getopt_long(argc, argv, "i:t:r:b:", long_options, 0)) != -1;) {
+    for (int c; (c = getopt_long(argc, argv, "i:T:t:r:b:", long_options, 0)) != -1;) {
         switch (c) {
         case 'i':
             if (auto i = parse_int(optarg)) {
@@ -144,8 +153,17 @@ std::optional<Arguments> parse_args(int argc, char** argv) {
             }
             break;
 
+        case 'T':
+            if (auto t = parse_float(optarg)) {
+                temperature = *t;
+            } else {
+                std::cerr << "Invalid temperature: " << optarg << '\n';
+                return std::nullopt;
+            }
+            break;
+
         case 't':
-            if (auto t = parse_int(optarg)) {
+            if (auto t = parse_float(optarg)) {
                 threshold = *t;
             } else {
                 std::cerr << "Invalid threshold: " << optarg << '\n';
@@ -180,7 +198,7 @@ std::optional<Arguments> parse_args(int argc, char** argv) {
 
     for (int i = optind; i < argc; ++i) {
         if (auto net = load_net(argv[i], batch_size)) {
-            args.nets.emplace_back(std::move(net), *iterations, threshold, argv[i]);
+            args.nets.emplace_back(std::move(net), *iterations, temperature, threshold, argv[i]);
         } else {
             std::cerr << "Couldn't open file '" << argv[i] << "'\n";
             return std::nullopt;
@@ -190,17 +208,19 @@ std::optional<Arguments> parse_args(int argc, char** argv) {
     return args;
 }
 
-Engine::Engine(std::unique_ptr<NeuralNet>&& net, int iterations, int threshold, std::string&& name)
+Engine::Engine(std::unique_ptr<NeuralNet>&& net, int iterations, float temperature, float threshold, std::string&& name)
     : net(std::move(net)), name(std::move(name)) {
-    this->iterations = iterations;
-    this->threshold  = threshold;
+    this->iterations  = iterations;
+    this->temperature = temperature;
+    this->threshold   = threshold;
 }
 
 Engine::Engine(Engine&& other) {
     std::swap(this->net, other.net);
 
-    this->iterations = other.iterations;
-    this->threshold  = other.threshold;
+    this->iterations  = other.iterations;
+    this->temperature = other.temperature;
+    this->threshold   = other.threshold;
 
     std::swap(this->root, other.root);
     std::swap(this->current, other.current);
@@ -221,9 +241,8 @@ void Engine::new_game() {
 
 Move Engine::make_move() {
     mcts(current, *net, *search_stop_iterations(iterations), false);
-    auto next = played(current->board) >= threshold
-        ? select_move_visit_count (current)
-        : select_move_proportional(current);
+    auto next = temperature ? select_move_temperature(current, temperature, threshold)
+                            : select_move_visit_count(current);
     return next->move;
 }
 
