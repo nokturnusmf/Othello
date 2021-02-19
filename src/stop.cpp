@@ -98,8 +98,8 @@ class TimeStopper : public SearchStopper {
 public:
     TimeStopper(long duration) : duration(duration) {}
 
-    bool operator()(const Tree*) {
-        return std::chrono::steady_clock::now() > end;
+    bool operator()(const Tree* tree) {
+        return tree->n > 1 && std::chrono::steady_clock::now() > end;
     }
 
     void reset() {
