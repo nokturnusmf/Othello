@@ -3,7 +3,7 @@ CXX_FLAGS := -Wall -Wextra -Wno-sign-compare -O3 -march=native
 CUC := nvcc -O3
 CUC_FLAGS := $(foreach option,$(CXX_FLAGS),-Xcompiler $(option))
 
-LIBS := -lcudnn
+LIBS := -lcudnn -lcublas
 
 COMMON_SRC   := board tree mcts stop neural
 SELFPLAY_SRC := self_play self_play_data $(COMMON_SRC)

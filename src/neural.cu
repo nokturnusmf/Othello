@@ -3,6 +3,7 @@
 #include <vector>
 
 #include <cudnn.h>
+#include <cublas_v2.h>
 
 struct CudaException : public std::exception {
     CudaException(cudaError_t status) : status(status) {}
@@ -24,8 +25,29 @@ struct CudnnException : public std::exception {
     cudnnStatus_t status;
 };
 
+struct CublasException : public std::exception {
+    CublasException(cublasStatus_t status) : status(status) {}
+
+    const char* what() const noexcept {
+        switch (status) {
+            case CUBLAS_STATUS_SUCCESS:          return "CUBLAS_STATUS_SUCCESS";
+            case CUBLAS_STATUS_NOT_INITIALIZED:  return "CUBLAS_STATUS_NOT_INITIALIZED";
+            case CUBLAS_STATUS_ALLOC_FAILED:     return "CUBLAS_STATUS_ALLOC_FAILED";
+            case CUBLAS_STATUS_INVALID_VALUE:    return "CUBLAS_STATUS_INVALID_VALUE";
+            case CUBLAS_STATUS_ARCH_MISMATCH:    return "CUBLAS_STATUS_ARCH_MISMATCH";
+            case CUBLAS_STATUS_MAPPING_ERROR:    return "CUBLAS_STATUS_MAPPING_ERROR";
+            case CUBLAS_STATUS_EXECUTION_FAILED: return "CUBLAS_STATUS_EXECUTION_FAILED";
+            case CUBLAS_STATUS_INTERNAL_ERROR:   return "CUBLAS_STATUS_INTERNAL_ERROR";
+            default:                             return "Unknown";
+        }
+    }
+
+    cublasStatus_t status;
+};
+
 #define cudaCheckError(f) if (auto _error_code = f) { throw CudaException(_error_code); }
 #define cudnnCheckError(f) if (auto _error_code = f) { throw CudnnException(_error_code); }
+#define cublasCheckError(f) if (auto _error_code = f) { throw CublasException(_error_code); }
 
 struct CudnnParams {
     static CudnnParams* get() {
@@ -66,6 +88,27 @@ private:
     ~CudnnParams() {
         cudaFree(workspace);
         cudnnDestroy(handle);
+    }
+};
+
+struct CublasParams {
+    static CublasParams* get() {
+        thread_local CublasParams p;
+        return &p;
+    }
+
+    CublasParams(const CudnnParams&) = delete;
+    CublasParams(CudnnParams&&) = delete;
+
+    cublasHandle_t handle;
+
+private:
+    CublasParams() {
+        cublasCheckError(cublasCreate(&handle));
+    }
+
+    ~CublasParams() {
+        cublasDestroy(handle);
     }
 };
 
@@ -187,18 +230,12 @@ struct ResBlock {
     BatchNorm bn2;
 };
 
-__global__ void eval_layer_kernel(float* output, const float* input, const float* weights, const float* biases, int input_length, bool relu) {
-    int o = blockIdx.x * blockDim.x + threadIdx.x;
-    int i = threadIdx.x;
-    output[o] = 0;
-
-    for (int j = 0; j < input_length; ++j) {
-        output[o] += weights[i * input_length + j] * input[blockIdx.x * input_length + j];
+__global__ void add_bias(float* out, const float* bias, int n, int m, bool relu) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) {
+        out[i] += bias[i % m];
+        if (relu && out[i] < 0) out[i] = 0;
     }
-
-    output[o] += biases[i];
-
-    if (relu && output[o] < 0) output[o] = 0;
 }
 
 struct Dense {
@@ -224,7 +261,17 @@ struct Dense {
     }
 
     void operator()(const float* input, float* output, int batch_size, bool relu) const {
-        eval_layer_kernel<<<batch_size, dims.h>>>(output, input, weight, bias, dims.w, relu);
+        static const float one  = 1.f;
+        static const float zero = 0.f;
+
+        auto cublas = CublasParams::get();
+
+        cublasCheckError(cublasSgemm(cublas->handle, CUBLAS_OP_T, CUBLAS_OP_N, dims.h, batch_size, dims.w, &one, weight, dims.w, input, dims.w, &zero, output, dims.h));
+
+        int n = batch_size * dims.h;
+        int threads = std::min(n, 128);
+        int blocks = (n + threads - 1) / threads;
+        add_bias<<<blocks, threads>>>(output, bias, n, dims.h, relu);
     }
 
     struct Dimensions {
