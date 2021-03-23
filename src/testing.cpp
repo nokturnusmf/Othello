@@ -43,6 +43,7 @@ private:
 struct Arguments {
     std::vector<Engine> nets;
     int repeats = 1;
+    std::vector<std::vector<Move>> book;
 };
 
 struct Game {
@@ -74,7 +75,7 @@ struct Series {
 struct Tournament {
     Tournament(std::vector<Engine>&& engines);
 
-    void run(int repeats);
+    void run(const std::vector<std::vector<Move>>& book, int repeats);
 
     void print_scores() const;
     void print_table() const;
@@ -125,6 +126,26 @@ std::unique_ptr<NeuralNet> load_net(const char* path, int batch_size) {
     return load_net(file, batch_size);
 }
 
+std::vector<std::vector<Move>> load_book(const char* path) {
+    std::ifstream file(path);
+
+    std::vector<std::vector<Move>> book;
+
+    std::string line;
+    while (std::getline(file, line)) {
+        std::vector<Move> moves;
+
+        for (size_t i = 0; i < line.size(); i += 2) {
+            Move move { line[i + 1] - '1', line[i] - 'a' };
+            moves.push_back(move);
+        }
+
+        book.emplace_back(std::move(moves));
+    }
+
+    return book;
+}
+
 std::optional<Arguments> parse_args(int argc, char** argv) {
     Arguments args;
 
@@ -139,10 +160,11 @@ std::optional<Arguments> parse_args(int argc, char** argv) {
         { "threshold",   1, 0, 't' },
         { "repeats",     1, 0, 'r' },
         { "batch-size",  1, 0, 'b' },
+        { "book",        1, 0, 'B' },
         { 0,             0, 0,  0  }
     };
 
-    for (int c; (c = getopt_long(argc, argv, "i:T:t:r:b:", long_options, 0)) != -1;) {
+    for (int c; (c = getopt_long(argc, argv, "i:T:t:r:b:B:", long_options, 0)) != -1;) {
         switch (c) {
         case 'i':
             if (auto i = parse_int(optarg)) {
@@ -188,12 +210,23 @@ std::optional<Arguments> parse_args(int argc, char** argv) {
                 return std::nullopt;
             }
             break;
+
+        case 'B':
+            args.book = load_book(optarg);
+            if (args.book.empty()) {
+                std::cerr << "Error loading book\n";
+                return std::nullopt;
+            }
         }
     }
 
     if (argc - optind < 2 || !iterations) {
         std::cerr << "Usage: " << argv[0] << " [options] -i <iterations> <nets...>\n";
         return std::nullopt;
+    }
+
+    if (args.book.empty()) {
+        args.book.emplace_back();
     }
 
     for (int i = optind; i < argc; ++i) {
@@ -263,7 +296,7 @@ void Engine::update(Move move) {
     }
 }
 
-Game game(Engine& black, Engine& white) {
+Game game(Engine& black, Engine& white, const std::vector<Move>& book) {
     Board board;
     Colour turn = Colour::Black;
 
@@ -271,6 +304,16 @@ Game game(Engine& black, Engine& white) {
 
     black.new_game();
     white.new_game();
+
+    for (auto move : book) {
+        play_move(&board, move, turn);
+        if (available(board, other(turn))) turn = other(turn);
+
+        moves.push_back(move);
+
+        black.update(move);
+        white.update(move);
+    }
 
     while (true) {
         auto move = (turn == Colour::Black ? black : white).make_move();
@@ -322,13 +365,15 @@ Tournament::Tournament(std::vector<Engine>&& engines) : engines(std::move(engine
     }
 }
 
-void Tournament::run(int repeats) {
+void Tournament::run(const std::vector<std::vector<Move>>& book, int repeats) {
     for (int i = 0; i < engines.size(); ++i) {
         for (int j = 0; j < engines.size(); ++j) {
             if (i == j) continue;
 
-            for (int k = 0; k < repeats; ++k) {
-                results[i][j].add_game(game(engines[i], engines[j]));
+            for (auto& line : book) {
+                for (int k = 0; k < repeats; ++k) {
+                    results[i][j].add_game(game(engines[i], engines[j], line));
+                }
             }
         }
     }
@@ -404,6 +449,6 @@ int main(int argc, char** argv) {
     }
 
     Tournament tournament(std::move(args->nets));
-    tournament.run(args->repeats);
+    tournament.run(args->book, args->repeats);
     tournament.print_all();
 }
