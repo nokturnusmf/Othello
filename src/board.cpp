@@ -172,7 +172,7 @@ bool available(const Board& board, Colour colour) {
 }
 
 bool game_over(const Board& board) {
-    return played(board) >= 64 || (!available(board, Colour::Black) && !available(board, Colour::White));
+    return played(board) >= 64 || !board.black || !board.white || (!available(board, Colour::Black) && !available(board, Colour::White));
 }
 
 int individual_score(const Board& board, Colour colour) {

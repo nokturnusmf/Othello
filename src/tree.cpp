@@ -49,7 +49,7 @@ WDLProb Tree::wdl() const {
 }
 
 bool game_over(const Tree* tree) {
-    return tree->pass >= 2 || played(tree->board) == 64;
+    return !tree->board.black || !tree->board.white || tree->pass >= 2 || played(tree->board) == 64;
 }
 
 struct MoveAndBoard {
