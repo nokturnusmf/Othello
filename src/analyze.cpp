@@ -90,13 +90,14 @@ std::optional<Arguments> parse_args(int argc, char** argv) {
 
     static struct option long_options[] = {
         { "moves",      1, 0, 'm' },
+        { "board",      1, 0, 'b' },
         { "iterations", 1, 0, 'i' },
         { "time",       1, 0, 't' },
         { "batch-size", 1, 0, 'b' },
         { 0,            0, 0,  0  }
     };
 
-    for (int c; (c = getopt_long(argc, argv, "m:b:i:t:", long_options, 0)) != -1;) {
+    for (int c; (c = getopt_long(argc, argv, "m:B:b:i:t:", long_options, 0)) != -1;) {
         switch (c) {
         case 'm':
             if (auto pos = parse_moves(optarg)) {
@@ -104,6 +105,15 @@ std::optional<Arguments> parse_args(int argc, char** argv) {
                 break;
             } else {
                 std::cerr << "Error parsing moves\n";
+                return std::nullopt;
+            }
+
+        case 'B':
+            if (auto pos = parse_board(optarg)) {
+                args.pos = *pos;
+                break;
+            } else {
+                std::cerr << "Invalid board\n";
                 return std::nullopt;
             }
 
