@@ -150,7 +150,7 @@ std::optional<Arguments> parse_args(int argc, char** argv) {
     Arguments args;
 
     std::optional<int> iterations;
-    float temperature = 1;
+    float temperature = 0;
     float threshold = 2;
     int batch_size = 32;
 
